@@ -3,19 +3,35 @@ name = "agent"
 version = "0.0.1"
 description = "Starter template for making a new agent LangGraph."
 authors = [
-    { name = "William Fu-Hinthorn", email = "13333726+hinthornw@users.noreply.github.com" },
+    { name = "Shadrach Oloyede", email = "shadrach@gmail.com" },
 ]
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
+    "docling>=2.117.0",
+    "kagglehub>=1.0.2",
+    "langchain-community>=0.4.2",
+    "langchain-core>=1.5.3",
+    "langchain-docling>=2.0.0",
     "langchain-mcp-adapters>=0.3.1",
     "langchain-openai>=1.4.1",
+    "langchain-pinecone>=0.2.13",
+    "langchain-postgres>=0.0.17",
+    "langchain-text-splitters>=1.1.2",
+    "langchain-voyageai>=0.4.0",
     "langgraph>=1.0.0",
+    "maturin>=1.14.1",
     "mcp>=1.24.0,<2",
+    "pdf-inspector>=0.2.6",
+    "pinecone[asyncio]>=7.3.0",
+    "psycopg[binary]>=3.3.4",
     "python-dotenv>=1.0.1",
 ]
 
+[project.scripts]
+rag = "rag.main:main"
+rag-agent = "rag.main:agent_rag"
 
 [project.optional-dependencies]
 dev = ["mypy>=1.11.1", "ruff>=0.6.1"]
@@ -25,10 +41,11 @@ requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["langgraph.templates.agent", "agent"]
+packages = ["langgraph.templates.agent", "agent", "rag"]
 [tool.setuptools.package-dir]
 "langgraph.templates.agent" = "src/agent"
 "agent" = "src/agent"
+"rag" = "src/rag"
 
 
 [tool.setuptools.package-data]

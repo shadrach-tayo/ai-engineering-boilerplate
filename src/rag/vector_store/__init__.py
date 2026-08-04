@@ -1,0 +1,6 @@
+from typing import Protocol
+
+
+class VectorStoreLike(Protocol):
+    def add_documents(self, documents): ...
+    def as_retriever(self, k: int = 4): ...
