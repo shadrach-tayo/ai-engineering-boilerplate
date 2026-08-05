@@ -1,4 +1,4 @@
-"""Vector database module"""
+"""Vector database module."""
 
 import logging
 import os
@@ -18,10 +18,10 @@ logger = logging.getLogger(__file__)
 
 
 class PineconeVectorStoreManager:
-    """Vector database class"""
+    """Vector database class."""
 
     def __init__(self, index_name: str, *, embedding_dim: int = 1024):
-        """constructor"""
+        """PineconeVectorStoreManager Constructor."""
         logger.info("init db class")
         self.index_name = index_name
         existing_indexes = [
@@ -44,6 +44,7 @@ class PineconeVectorStoreManager:
         )
 
     def add_documents(self, documents):
+        """PineconeVectorStoreManager Constructor."""
         logger.info("splitting documents...")
         splits = self._split_documents(documents)
         self.vector_store.add_documents(splits)

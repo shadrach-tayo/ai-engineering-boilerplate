@@ -1,32 +1,47 @@
-"""Postgres + pgvector store"""
+"""Postgres + pgvector store."""
 
 import logging
 import os
 
 from langchain_postgres import PGEngine, PGVectorStore
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import (
+    CharacterTextSplitter,
+    RecursiveCharacterTextSplitter,
+)
 
 from rag.embeddings import embeddings_model
 
 logger = logging.getLogger(__file__)
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg://rag:rag@localhost:5432/rag",
+)
 
 
 class PostgresVectorStoreManager:
-    """Vector database class"""  # noqa: D415
+    """Vector database class."""
 
-    def __init__(self, index_name: str, *, embedding_dim: int = 1024):  # noqa: D107
+    def __init__(
+        self,
+        index_name: str,
+        *,
+        embedding_dim: int = 1024,
+        chunk_size: int | None = None,
+    ):  # noqa: D107
         logger.info("init db class")
+        self.chunk_size = chunk_size
         self.index_name = index_name
+        if not DATABASE_URL:
+            raise ValueError("DATABASE_URL is not set")
         self.engine = PGEngine.from_connection_string(url=DATABASE_URL)
 
         # CREATE TABLES IF MISSING
-        # if not self.engine.
-        # self.engine.init_vectorstore_table(
-        #     table_name=index_name,
-        #     vector_size=embedding_dim,
-        # )
+        if chunk_size:
+            self.engine.init_vectorstore_table(
+                table_name=index_name,
+                vector_size=embedding_dim,
+            )
 
         self.vector_store = PGVectorStore.create_sync(
             engine=self.engine,
@@ -45,9 +60,13 @@ class PostgresVectorStoreManager:
 
     def _split_documents(self, documents):
         logger.info("splitting documents")
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            add_start_index=True,
+        # text_splitter = RecursiveCharacterTextSplitter(
+        # chunk_size=1000,
+        #     chunk_overlap=200,
+        #     add_start_index=True,
+        # )
+        # return text_splitter.split_documents(documents)
+        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
+            encoding_name="cl100k_base", chunk_size=self.chunk_size, chunk_overlap=30
         )
         return text_splitter.split_documents(documents)

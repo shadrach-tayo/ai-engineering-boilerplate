@@ -1,3 +1,4 @@
+import json
 import logging
 
 # import os
@@ -11,6 +12,8 @@ import pdf_inspector
 # from langchain_docling import DoclingLoader
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters.markdown import MarkdownHeaderTextSplitter
 
 # from rag.embeddings import embeddings_model
 from rag.vector_store.pinecone_vector_store import PineconeVectorStoreManager
@@ -26,6 +29,10 @@ documents = [
     "An LLMChain is a chain that composes basic LLM functionality. It consists of a PromptTemplate and a language model (either an LLM or chat model). It formats the prompt template using the input key values provided (and also memory key values, if available), passes the formatted string to LLM and returns the LLM output.",
     "A Runnable represents a generic unit of work that can be invoked, batched, streamed, and/or transformed.",
 ]
+
+index_name = "chunk_1024"
+chunk_size = 1024
+embedding_dim = 1024
 
 
 def main():
@@ -67,7 +74,26 @@ def main():
     # result = pdf_inspector.extract_pages_markdown(sources[0].as_posix())
     # logger.info(results)
 
-    store = PostgresVectorStoreManager("agent_guides")
+    # markdown_guide = "\n\n".join(page.markdown for page in results[0].pages)
+    # logger.info(markdown_guide)
+    # headers_to_split_on = [
+    #     ("#", "Header 1"),
+    #     ("##", "Header 2"),
+    #     ("###", "Header 3"),
+    #     ("####", "Header 4"),
+    # ]
+    # markdown_splitter = MarkdownHeaderTextSplitter(
+    #     headers_to_split_on=headers_to_split_on, strip_headers=False
+    # )
+    # markdown_docs = markdown_splitter.split_text(markdown_guide)
+    # logger.info("\n\n")
+    # logger.info(markdown_docs)
+    # text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=30)
+    # markdown_texts = text_splitter.split_documents(markdown_docs)
+    # logger.info("\n\n")
+    # logger.info(markdown_texts)
+
+    store = PostgresVectorStoreManager(index_name, chunk_size=chunk_size)
 
     for index, result in enumerate(results):
         logger.info(
@@ -95,16 +121,32 @@ def main():
     # print(result.confidence)  # 0.0 - 1.0
     # print(result.page_count)  # number of pages
     # print(result.markdown)
-    # retriever = store.as_retriever(k=5)
-    # logger.info(
-    #     retriever.invoke(
-    #         "What are the Common use cases and applications for AI agents?"
-    #     )
-    # )
 
 
-def agent_rag(question: str):
-    store = PostgresVectorStoreManager("agent_guides")
+def vector_rag(index_name: str, question: str):
+    store = PostgresVectorStoreManager(index_name)
+    retriever = store.as_retriever(k=5)
+    retrieval = retriever.invoke(question)
+    formatted_retrieval = [
+        {
+            "question": question,
+            "content": doc.page_content,
+            "metadata": dict(doc.metadata),
+        }
+        for doc in retrieval
+    ]
+    return formatted_retrieval
+
+
+def save_data(data, file_name):  # noqa: D103
+    save_file_path = Path(base_path).parent / f"../../data/{file_name}.json"
+    with open(save_file_path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4)
+        logger.info(f"Saved: {save_file_path}")
+
+
+def agent_rag(question: str):  # noqa: D103
+    store = PostgresVectorStoreManager(index_name)
     retriever = store.as_retriever(k=5)
     docs = retriever.invoke(question)
     context = "\n".join(doc.page_content for doc in docs)
@@ -128,6 +170,7 @@ def agent_rag(question: str):
         ]
     )
     return {
+        "question": question,
         "content": response.content,
         "docs": [doc.metadata for doc in docs],
     }
@@ -135,12 +178,32 @@ def agent_rag(question: str):
 
 if __name__ == "__main__":
     # main()
-    question = (
-        "what are evaluations and how do we build evaluations for agentic systems?"
-    )
-    response = agent_rag(question)
-    logger.info("Question: %s", question)
-    print("\n\n")
-    logger.info("answer: %s", response["content"])
-    print("\n\n")
-    logger.info("citations: %s", response["docs"])
+    base_path = __file__
+    questions = [
+        "What is an Agent?",
+        "What are the guardrails used in building AI agents?",
+        "What are the Common architecture patterns for building AI Agents?",
+        "What are the Common use cases and applications for AI agents?",
+        "what are evaluations and how do we build evaluations for agentic systems?",
+    ]
+    rag_responses = []
+    agent_responses = []
+    for question in questions:
+        rag_response = vector_rag(index_name, question)
+        rag_responses.append(rag_response)
+        agent_response = agent_rag(question)
+        agent_responses.append(agent_response)
+
+    save_data(rag_responses, f"rag_{index_name}")
+    save_data(agent_responses, f"agent_{index_name}")
+
+    # response = [agent_rag(question) for question in questions]
+    # save_file_path = Path(base_path).parent / "../../data/chunk_250_retriever"
+    # with open(save_file_path) as f:
+    #     logger.info("")
+
+    # logger.info("Question: %s", question)
+    # print("\n\n")
+    # logger.info("answer: %s", response["content"])
+    # print("\n\n")
+    # logger.info("citations: %s", response["docs"])
