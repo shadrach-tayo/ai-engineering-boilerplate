@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 
+import cohere
 import pdf_inspector
 
 # from docling.document_converter import DocumentConverter
@@ -12,9 +13,9 @@ import pdf_inspector
 # from langchain_docling import DoclingLoader
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_text_splitters.markdown import MarkdownHeaderTextSplitter
 
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from langchain_text_splitters.markdown import MarkdownHeaderTextSplitter
 # from rag.embeddings import embeddings_model
 from rag.vector_store.pinecone_vector_store import PineconeVectorStoreManager
 from rag.vector_store.postgress_vector_store import PostgresVectorStoreManager
@@ -30,9 +31,11 @@ documents = [
     "A Runnable represents a generic unit of work that can be invoked, batched, streamed, and/or transformed.",
 ]
 
-index_name = "chunk_1024"
-chunk_size = 1024
-embedding_dim = 1024
+index_name = "chunk_256"
+chunk_size = 256
+embedding_dim = 256
+
+co = cohere.ClientV2(api_key=os.environ.get("COHERE_API_KEY"))
 
 
 def main():
@@ -123,9 +126,10 @@ def main():
     # print(result.markdown)
 
 
-def vector_rag(index_name: str, question: str):
+def vector_rag(index_name: str, question: str, *, top_n: int = 5):
+    """Retrieve relevant document from the vector database indexed by the index_name parameter."""
     store = PostgresVectorStoreManager(index_name)
-    retriever = store.as_retriever(k=5)
+    retriever = store.as_retriever(top_n)
     retrieval = retriever.invoke(question)
     formatted_retrieval = [
         {
@@ -135,7 +139,27 @@ def vector_rag(index_name: str, question: str):
         }
         for doc in retrieval
     ]
-    return formatted_retrieval
+    retrieved_docs = [doc.get("content", "") for doc in formatted_retrieval]
+    reranked_docs = rerank(retrieved_docs, question, 3)
+    return {
+        "docs": reranked_docs.get("docs"),
+        "original_docs": [doc.get("metadata") for doc in formatted_retrieval],
+        "rerank": reranked_docs.get("rerank"),
+    }
+
+
+def rerank(docs: list[str], question: str, top_n: int = 3):
+    """Rerank document from vector retriever."""
+    response = co.rerank(
+        model="rerank-v4.0-pro",
+        query=question,
+        documents=docs,
+        top_n=top_n,
+    )
+    result = []
+    for item in response.results:
+        result.append(docs[item.index])
+    return {"docs": result, "rerank": [item.dict() for item in response.results]}
 
 
 def save_data(data, file_name):  # noqa: D103
@@ -146,10 +170,14 @@ def save_data(data, file_name):  # noqa: D103
 
 
 def agent_rag(question: str):  # noqa: D103
-    store = PostgresVectorStoreManager(index_name)
-    retriever = store.as_retriever(k=5)
-    docs = retriever.invoke(question)
-    context = "\n".join(doc.page_content for doc in docs)
+    # store = PostgresVectorStoreManager(index_name)
+    # retriever = store.as_retriever(k=5)
+    # docs = retriever.invoke(question)
+    result = vector_rag(index_name, question)
+    # retrieved_docs = [doc.get("content", "") for doc in docs]
+    # reranked_docs = rerank(retrieved_docs, question, 3)
+    # context = "\n".join(doc.get("content", "") for doc in docs)
+    context = "\n".join(doc for doc in result.get("docs", []))
 
     llm = ChatOpenAI(model="gpt-5.5", temperature=1)
 
@@ -172,7 +200,8 @@ def agent_rag(question: str):  # noqa: D103
     return {
         "question": question,
         "content": response.content,
-        "docs": [doc.metadata for doc in docs],
+        "docs": [item for item in result.get("original_docs", [])],
+        "reranks": result.get("rerank"),
     }
 
 
@@ -194,16 +223,5 @@ if __name__ == "__main__":
         agent_response = agent_rag(question)
         agent_responses.append(agent_response)
 
-    save_data(rag_responses, f"rag_{index_name}")
-    save_data(agent_responses, f"agent_{index_name}")
-
-    # response = [agent_rag(question) for question in questions]
-    # save_file_path = Path(base_path).parent / "../../data/chunk_250_retriever"
-    # with open(save_file_path) as f:
-    #     logger.info("")
-
-    # logger.info("Question: %s", question)
-    # print("\n\n")
-    # logger.info("answer: %s", response["content"])
-    # print("\n\n")
-    # logger.info("citations: %s", response["docs"])
+    save_data(rag_responses, f"rag_{index_name}_rerank")
+    save_data(agent_responses, f"agent_{index_name}_rerank")
