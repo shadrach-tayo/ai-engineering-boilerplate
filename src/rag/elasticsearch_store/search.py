@@ -11,12 +11,19 @@ from langchain_core.documents import Document
 from langchain_text_splitters import CharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 
 ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "http://localhost:9200")
+_st_models: dict[str, SentenceTransformer] = {}
+
+
+def _load_st_model(name: str) -> SentenceTransformer:
+    model = _st_models.get(name)
+    if model is None:
+        model = SentenceTransformer(name)
+        _st_models[name] = model
+    return model
 
 
 def reciprocal_rank_fuse(
@@ -44,11 +51,21 @@ def reciprocal_rank_fuse(
 class Search:
     """..."""
 
-    def __init__(self, chunk_size: int, embedding_dims: int):
-        """Entry function."""
+    def __init__(
+        self,
+        chunk_size: int,
+        embedding_dims: int,
+        embedding_model: str | SentenceTransformer | None = None,
+        chunk_overlap: int = 30,
+    ):
+        """Connect to Elasticsearch and load the kNN embedding model."""
         self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
         self.embedding_dims = embedding_dims
-        self.model = embedding_model
+        if isinstance(embedding_model, SentenceTransformer):
+            self.model = embedding_model
+        else:
+            self.model = _load_st_model(embedding_model or "all-MiniLM-L6-v2")
         self.es = Elasticsearch(ELASTICSEARCH_URL)
         client_info = self.es.info()
         logger.info("Connecting to Elasticsearch!")
@@ -165,6 +182,8 @@ class Search:
         # )
         # return text_splitter.split_documents(documents)
         text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
-            encoding_name="cl100k_base", chunk_size=self.chunk_size, chunk_overlap=30
+            encoding_name="cl100k_base",
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
         )
         return text_splitter.split_documents(documents)

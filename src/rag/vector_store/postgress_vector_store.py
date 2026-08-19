@@ -3,6 +3,7 @@
 import logging
 import os
 
+from langchain_core.embeddings import Embeddings
 from langchain_postgres import PGEngine, PGVectorStore
 from langchain_text_splitters import (
     CharacterTextSplitter,
@@ -28,9 +29,12 @@ class PostgresVectorStoreManager:
         *,
         embedding_dim: int = 1024,
         chunk_size: int | None = None,
+        chunk_overlap: int = 30,
+        embeddings: Embeddings | None = None,
     ):  # noqa: D107
         logger.info("init db class")
         self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
         self.index_name = index_name
         if not DATABASE_URL:
             raise ValueError("DATABASE_URL is not set")
@@ -46,7 +50,7 @@ class PostgresVectorStoreManager:
         self.vector_store = PGVectorStore.create_sync(
             engine=self.engine,
             table_name=index_name,
-            embedding_service=embeddings_model,
+            embedding_service=embeddings or embeddings_model,
         )
 
     def add_documents(self, documents):  # noqa: D102
@@ -67,6 +71,8 @@ class PostgresVectorStoreManager:
         # )
         # return text_splitter.split_documents(documents)
         text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
-            encoding_name="cl100k_base", chunk_size=self.chunk_size, chunk_overlap=30
+            encoding_name="cl100k_base",
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
         )
         return text_splitter.split_documents(documents)
