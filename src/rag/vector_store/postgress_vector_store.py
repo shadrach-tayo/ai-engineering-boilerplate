@@ -6,7 +6,7 @@ import os
 from langchain_postgres import PGEngine, PGVectorStore
 from langchain_text_splitters import (
     CharacterTextSplitter,
-    RecursiveCharacterTextSplitter,
+    # RecursiveCharacterTextSplitter,
 )
 
 from rag.embeddings import embeddings_model

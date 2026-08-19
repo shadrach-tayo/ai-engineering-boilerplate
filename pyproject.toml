@@ -11,7 +11,9 @@ requires-python = ">=3.10"
 dependencies = [
     "cohere>=7.0.8",
     "docling>=2.117.0",
-    "elasticsearch>=9.5.0",
+    "elasticsearch>=8.15.0,<9",
+    "fastapi>=0.115.0",
+    "jinja2>=3.1.0",
     "kagglehub>=1.0.2",
     "langchain-community>=0.4.2",
     "langchain-core>=1.5.3",
@@ -23,17 +25,22 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "langchain-voyageai>=0.4.0",
     "langgraph>=1.0.0",
+    "markdown-it-py>=3.0.0",
     "maturin>=1.14.1",
     "mcp>=1.24.0,<2",
     "pdf-inspector>=0.2.6",
     "pinecone[asyncio]>=7.3.0",
     "psycopg[binary]>=3.3.4",
     "python-dotenv>=1.0.1",
+    "python-multipart>=0.0.9",
+    "sentence-transformers>=6.0.0",
+    "uvicorn[standard]>=0.32.0",
 ]
 
 [project.scripts]
 rag = "rag.main:main"
 rag-agent = "rag.main:agent_rag"
+search-api = "api.app:run"
 
 [project.optional-dependencies]
 dev = ["mypy>=1.11.1", "ruff>=0.6.1"]
@@ -43,15 +50,17 @@ requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["langgraph.templates.agent", "agent", "rag"]
+packages = ["langgraph.templates.agent", "agent", "rag", "api"]
 [tool.setuptools.package-dir]
 "langgraph.templates.agent" = "src/agent"
 "agent" = "src/agent"
 "rag" = "src/rag"
+"api" = "src/api"
 
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
+"api" = ["templates/*.html"]
 
 [tool.ruff]
 lint.select = [

@@ -1,9 +1,13 @@
+"""Rag module for hybrid search apis."""
+
 import json
 import logging
 
 # import os
 import os
+from datetime import datetime
 from pathlib import Path
+from pprint import pprint
 
 import cohere
 import pdf_inspector
@@ -17,6 +21,7 @@ from langchain_openai import ChatOpenAI
 # from langchain_text_splitters import RecursiveCharacterTextSplitter
 # from langchain_text_splitters.markdown import MarkdownHeaderTextSplitter
 # from rag.embeddings import embeddings_model
+from rag.elasticsearch_store.search import Search
 from rag.vector_store.pinecone_vector_store import PineconeVectorStoreManager
 from rag.vector_store.postgress_vector_store import PostgresVectorStoreManager
 
@@ -31,11 +36,15 @@ documents = [
     "A Runnable represents a generic unit of work that can be invoked, batched, streamed, and/or transformed.",
 ]
 
-index_name = "chunk_256"
-chunk_size = 256
+base_path = __file__
+
+index_name = "chunk_1024"
+chunk_size = 1024
 embedding_dim = 256
 
 co = cohere.ClientV2(api_key=os.environ.get("COHERE_API_KEY"))
+
+es = Search(chunk_size, embedding_dim)
 
 
 def main():
@@ -96,7 +105,9 @@ def main():
     # logger.info("\n\n")
     # logger.info(markdown_texts)
 
-    store = PostgresVectorStoreManager(index_name, chunk_size=chunk_size)
+    # store = PostgresVectorStoreManager(index_name, chunk_size=chunk_size)
+
+    # es.create_index(index_name)
 
     for index, result in enumerate(results):
         logger.info(
@@ -107,11 +118,21 @@ def main():
         docs = [
             Document(
                 page_content=page.markdown,
-                metadata={"page": page.page, "source": source},
+                metadata={
+                    "page": page.page,
+                    "source": source,
+                    "created_at": datetime.now().isoformat(),
+                },
             )
             for page in result.pages
         ]
-        store.add_documents(docs)
+
+        # store.add_documents(docs)
+        # pg_index_injestion(index=index_name, documents=docs)
+        # es_index_injestion(index=index_name, documents=docs)
+        index_data_sources("chunk_1024", 1024, 256, docs)
+        index_data_sources("chunk_512", 512, 256, docs)
+        index_data_sources("chunk_256", 256, 256, docs)
 
     # for page in result.pages:
     #     # print(
@@ -124,6 +145,17 @@ def main():
     # print(result.confidence)  # 0.0 - 1.0
     # print(result.page_count)  # number of pages
     # print(result.markdown)
+
+
+def index_data_sources(  # noqa: D103
+    index_name: str, chunk_size: int, embedding_dim: int, documents: list[Document]
+):
+    es_index = Search(chunk_size, embedding_dim)
+    es_index.create_index(index_name)
+    results = es_index.insert_documents(index_name=index_name, documents=documents)
+    logger.info(
+        "ES index populated: %s, entries: %s", index_name, len(results["items"])
+    )
 
 
 def vector_rag(index_name: str, question: str, *, top_n: int = 5):
@@ -169,15 +201,38 @@ def save_data(data, file_name):  # noqa: D103
         logger.info(f"Saved: {save_file_path}")
 
 
-def agent_rag(question: str):  # noqa: D103
-    # store = PostgresVectorStoreManager(index_name)
-    # retriever = store.as_retriever(k=5)
-    # docs = retriever.invoke(question)
-    result = vector_rag(index_name, question)
-    # retrieved_docs = [doc.get("content", "") for doc in docs]
-    # reranked_docs = rerank(retrieved_docs, question, 3)
-    # context = "\n".join(doc.get("content", "") for doc in docs)
-    context = "\n".join(doc for doc in result.get("docs", []))
+def _es_hit_content(hit: dict) -> str:
+    return (hit.get("_source") or {}).get("content") or ""
+
+
+def _dedupe_texts(texts: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for text in texts:
+        key = " ".join(text.split())[:240]
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        unique.append(text)
+    return unique
+
+
+def agent_rag(question: str, store_index: str | None = None, *, top_n: int = 5):
+    """Answer a question using vector RAG and Elasticsearch hybrid hits."""
+    store_index = store_index or index_name
+    result = vector_rag(store_index, question, top_n=top_n)
+    vector_docs = list(result.get("docs") or [])
+
+    es_hits: list[dict] = []
+    try:
+        es_payload = search(question, store_index=store_index, size=top_n)
+        es_hits = list(es_payload.get("results") or [])
+    except Exception:  # noqa: BLE001
+        logger.exception("ES retrieval failed in agent_rag")
+
+    es_docs = [_es_hit_content(hit) for hit in es_hits]
+    context_docs = _dedupe_texts([*vector_docs, *es_docs])
+    context = "\n\n".join(context_docs)
 
     llm = ChatOpenAI(model="gpt-5.5", temperature=1)
 
@@ -202,26 +257,77 @@ def agent_rag(question: str):  # noqa: D103
         "content": response.content,
         "docs": [item for item in result.get("original_docs", [])],
         "reranks": result.get("rerank"),
+        "es_docs": [
+            {
+                "source": (hit.get("_source") or {}).get("source"),
+                "page": (hit.get("_source") or {}).get("page"),
+                "score": hit.get("_score"),
+            }
+            for hit in es_hits
+        ],
     }
 
 
-if __name__ == "__main__":
-    # main()
-    base_path = __file__
-    questions = [
-        "What is an Agent?",
-        "What are the guardrails used in building AI agents?",
-        "What are the Common architecture patterns for building AI Agents?",
-        "What are the Common use cases and applications for AI agents?",
-        "what are evaluations and how do we build evaluations for agentic systems?",
-    ]
-    rag_responses = []
-    agent_responses = []
-    for question in questions:
-        rag_response = vector_rag(index_name, question)
-        rag_responses.append(rag_response)
-        agent_response = agent_rag(question)
-        agent_responses.append(agent_response)
+def es_index_injestion(index: str, documents):
+    """Index Elasticsearch cluster index."""
+    results = es.insert_documents(index, documents)
+    logger.info("ES index populated: %s, entries: %s", index, len(results["items"]))
+    # pprint(results['items'])
 
-    save_data(rag_responses, f"rag_{index_name}_rerank")
-    save_data(agent_responses, f"agent_{index_name}_rerank")
+
+def pg_index_injestion(index: str, documents):
+    """Postgres DB vector embedding index."""
+    store = PostgresVectorStoreManager(index_name=index, chunk_size=chunk_size)
+    store.add_documents(documents)
+    logger.info("ES index populated: %s", index)
+
+
+def search(
+    question: str,
+    store_index: str | None = None,
+    *,
+    size: int = 10,
+    from_: int = 0,
+):
+    """Search Elasticsearch cluster index with BM25 + kNN RRF fusion."""
+    results = es.hybrid_search(
+        index_name=store_index or index_name,
+        question=question,
+        size=size,
+        from_=from_,
+    )
+    return {"results": results["hits"]["hits"], "total": results["hits"]["total"]}
+
+
+if __name__ == "__main__":
+    # es = Search()
+    response = search("What is an agent?", index_name)
+    results = response.get("results", [])
+    for result in results:
+        pprint(
+            {"source": result["_source"]["source"], "page": result["_source"]["page"]}
+        )
+    # for result in results
+    # logger.info("mappings after: ")
+    # pprint(es.get_mapping("chunk_1024"))
+    # pprint(es.get_mapping("chunk_512"))
+    # pprint(es.get_mapping("chunk_256"))
+    # main()
+
+    # questions = [
+    #     "What is an Agent?",
+    #     "What are the guardrails used in building AI agents?",
+    #     "What are the Common architecture patterns for building AI Agents?",
+    #     "What are the Common use cases and applications for AI agents?",
+    #     "what are evaluations and how do we build evaluations for agentic systems?",
+    # ]
+    # rag_responses = []
+    # agent_responses = []
+    # for question in questions:
+    #     rag_response = vector_rag(index_name, question)
+    #     rag_responses.append(rag_response)
+    #     agent_response = agent_rag(question)
+    #     agent_responses.append(agent_response)
+
+    # save_data(rag_responses, f"rag_{index_name}_rerank")
+    # save_data(agent_responses, f"agent_{index_name}_rerank")
