@@ -15,9 +15,9 @@ from fastapi.templating import Jinja2Templates
 from markdown_it import MarkdownIt
 from markupsafe import Markup
 
-from rag.main import agent_rag, search, vector_rag
-
 load_dotenv()
+
+from rag.main import agent_rag, search, vector_rag  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

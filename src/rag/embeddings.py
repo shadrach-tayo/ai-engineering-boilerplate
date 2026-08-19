@@ -2,8 +2,11 @@
 
 import os
 
+from dotenv import load_dotenv
 from langchain_voyageai import VoyageAIEmbeddings
 from pydantic import SecretStr
+
+load_dotenv()
 
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
 embeddings_model = VoyageAIEmbeddings(

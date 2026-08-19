@@ -16,7 +16,7 @@ logger = logging.getLogger(__file__)
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg://rag:rag@localhost:5432/rag",
+    "postgresql+psycopg://rag:rag@localhost:54325/rag",
 )
 
 

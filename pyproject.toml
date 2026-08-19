@@ -40,6 +40,7 @@ dependencies = [
 [project.scripts]
 rag = "rag.main:main"
 rag-agent = "rag.main:agent_rag"
+rag-eval = "rag.eval.run:main"
 search-api = "api.app:run"
 
 [project.optional-dependencies]
@@ -85,6 +86,11 @@ lint.ignore = [
 "tests/*" = ["D", "UP"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: needs running Postgres/Elasticsearch indexes",
+]
 
 [dependency-groups]
 dev = [
