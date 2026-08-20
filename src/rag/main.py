@@ -29,11 +29,11 @@ logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
 
 
-documents = [
-    "Caching embeddings enables the storage or temporary caching of embeddings, eliminating the necessity to recompute them each time.",
-    "An LLMChain is a chain that composes basic LLM functionality. It consists of a PromptTemplate and a language model (either an LLM or chat model). It formats the prompt template using the input key values provided (and also memory key values, if available), passes the formatted string to LLM and returns the LLM output.",
-    "A Runnable represents a generic unit of work that can be invoked, batched, streamed, and/or transformed.",
-]
+# documents = [
+#     "Caching embeddings enables the storage or temporary caching of embeddings, eliminating the necessity to recompute them each time.",
+#     "An LLMChain is a chain that composes basic LLM functionality. It consists of a PromptTemplate and a language model (either an LLM or chat model). It formats the prompt template using the input key values provided (and also memory key values, if available), passes the formatted string to LLM and returns the LLM output.",
+#     "A Runnable represents a generic unit of work that can be invoked, batched, streamed, and/or transformed.",
+# ]
 
 base_path = __file__
 
@@ -90,9 +90,9 @@ def main():
     # for d in docs[:3]:
     #     logger.info(d)
 
-    results = [
-        pdf_inspector.extract_pages_markdown(source.as_posix()) for source in sources
-    ]
+    # results = [
+    #     pdf_inspector.extract_pages_markdown(source.as_posix()) for source in sources
+    # ]
 
     # result = pdf_inspector.extract_pages_markdown(sources[0].as_posix())
     # logger.info(results)
@@ -120,30 +120,31 @@ def main():
 
     # es.create_index(index_name)
 
-    for index, result in enumerate(results):
-        logger.info(
-            "source: %s",
-            os.path.basename(sources[index].as_uri()),
-        )
-        source = os.path.basename(sources[index].as_uri())
-        docs = [
-            Document(
-                page_content=page.markdown,
-                metadata={
-                    "page": page.page,
-                    "source": source,
-                    "created_at": datetime.now().isoformat(),
-                },
-            )
-            for page in result.pages
-        ]
+    # for index, result in enumerate(results):
+    #     logger.info(
+    #         "source: %s",
+    #         os.path.basename(sources[index].as_uri()),
+    #     )
+    #     source = os.path.basename(sources[index].as_uri())
+    #     docs = [
+    #         Document(
+    #             page_content=page.markdown,
+    #             metadata={
+    #                 "page": page.page,
+    #                 "source": source,
+    #                 "created_at": datetime.now().isoformat(),
+    #             },
+    #         )
+    #         for page in result.pages
+    #     ]
 
-        # store.add_documents(docs)
-        # pg_index_injestion(index=index_name, documents=docs)
-        # es_index_injestion(index=index_name, documents=docs)
-        index_data_sources("chunk_1024", 1024, 256, docs)
-        index_data_sources("chunk_512", 512, 256, docs)
-        index_data_sources("chunk_256", 256, 256, docs)
+    # store.add_documents(docs)
+    # pg_index_injestion(index=index_name, documents=docs)
+    # es_index_injestion(index=index_name, documents=docs)
+
+    # index_data_sources("chunk_1024", 1024, 256, docs)
+    # index_data_sources("chunk_512", 512, 256, docs)
+    # index_data_sources("chunk_256", 256, 256, docs)
 
     # for page in result.pages:
     #     # print(
@@ -156,6 +157,8 @@ def main():
     # print(result.confidence)  # 0.0 - 1.0
     # print(result.page_count)  # number of pages
     # print(result.markdown)
+
+    logger.info("Rag main: ✅")
 
 
 def index_data_sources(  # noqa: D103
@@ -171,13 +174,17 @@ def index_data_sources(  # noqa: D103
 
 def vector_rag(index_name: str, question: str, *, top_n: int = 5):
     """Retrieve relevant document from the vector database indexed by the index_name parameter."""
-    return get_pipeline().retrieve(
-        question,
-        index_name=index_name,
-        strategy="vector",
-        top_k=top_n,
-        rerank=True,
-    ).as_vector_payload()
+    return (
+        get_pipeline()
+        .retrieve(
+            question,
+            index_name=index_name,
+            strategy="vector",
+            top_k=top_n,
+            rerank=True,
+        )
+        .as_vector_payload()
+    )
 
 
 def rerank(docs: list[str], question: str, top_n: int = 3):
@@ -225,14 +232,18 @@ def search(
     from_: int = 0,
 ):
     """Search Elasticsearch cluster index with BM25 + kNN RRF fusion."""
-    return get_pipeline().retrieve(
-        question,
-        index_name=store_index or index_name,
-        strategy="hybrid",
-        top_k=size,
-        from_=from_,
-        rerank=False,
-    ).as_es_payload()
+    return (
+        get_pipeline()
+        .retrieve(
+            question,
+            index_name=store_index or index_name,
+            strategy="hybrid",
+            top_k=size,
+            from_=from_,
+            rerank=False,
+        )
+        .as_es_payload()
+    )
 
 
 if __name__ == "__main__":

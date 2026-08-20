@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass, field
@@ -153,6 +154,41 @@ class RagPipeline:
             result = self._apply_rerank(result, question)
         return result
 
+    async def aretrieve(
+        self,
+        question: str,
+        *,
+        index_name: str | None = None,
+        strategy: RetrievalStrategy | None = None,
+        top_k: int | None = None,
+        from_: int = 0,
+        rerank: bool | None = None,
+    ) -> RetrievalResult:
+        """Fetch ranked chunks without blocking the caller’s event loop on sync drivers."""
+        index = index_name or self.config.index_name
+        chosen = strategy or self.config.strategy
+        k = top_k or self.config.top_k
+        should_rerank = self.config.rerank if rerank is None else rerank
+
+        if chosen == "vector":
+            result = await self._aretrieve_vector(question, index, k)
+        elif chosen == "hybrid":
+            result = await asyncio.to_thread(
+                self._retrieve_hybrid, question, index, k, from_
+            )
+        elif chosen == "ensemble":
+            result = await self._aretrieve_ensemble(question, index, k, from_)
+        else:
+            raise ValueError(f"Unknown retrieval strategy: {chosen}")
+
+        if should_rerank and result.docs:
+            result = await asyncio.to_thread(self._apply_rerank, result, question)
+        return result
+
+    def warmup(self, index_name: str | None = None) -> None:
+        """Open the vector store so later retrieves skip engine setup."""
+        self._vector_store(index_name or self.config.index_name)
+
     def generate(
         self,
         question: str,
@@ -174,9 +210,9 @@ class RagPipeline:
         llm = self._get_llm()
         instructions = f"""{self.config.system_prompt}
 
-    <context>
-    {context}
-    </context>"""
+        <context>
+        {context}
+        </context>"""
         response = llm.invoke(
             [
                 {"role": "system", "content": instructions},
@@ -248,6 +284,20 @@ class RagPipeline:
             total=len(docs),
         )
 
+    async def _aretrieve_vector(
+        self, question: str, index_name: str, top_k: int
+    ) -> RetrievalResult:
+        retriever = self._vector_store(index_name).as_retriever(top_k)
+        retrieval = await retriever.ainvoke(question)
+        docs = [doc.page_content for doc in retrieval]
+        metadata = [dict(doc.metadata) for doc in retrieval]
+        return RetrievalResult(
+            docs=docs,
+            metadata=metadata,
+            strategy="vector",
+            total=len(docs),
+        )
+
     def _retrieve_hybrid(
         self, question: str, index_name: str, top_k: int, from_: int
     ) -> RetrievalResult:
@@ -281,6 +331,29 @@ class RagPipeline:
         vector = self._retrieve_vector(question, index_name, top_k)
         try:
             hybrid = self._retrieve_hybrid(question, index_name, top_k, from_)
+        except Exception:  # noqa: BLE001
+            logger.exception("Hybrid retrieval failed; using vector results only")
+            return vector
+
+        docs = _dedupe_texts([*vector.docs, *hybrid.docs])
+        metadata = [*vector.metadata, *hybrid.metadata]
+        return RetrievalResult(
+            docs=docs,
+            metadata=metadata,
+            rerank=vector.rerank,
+            es_hits=hybrid.es_hits,
+            total=hybrid.total,
+            strategy="ensemble",
+        )
+
+    async def _aretrieve_ensemble(
+        self, question: str, index_name: str, top_k: int, from_: int
+    ) -> RetrievalResult:
+        vector = await self._aretrieve_vector(question, index_name, top_k)
+        try:
+            hybrid = await asyncio.to_thread(
+                self._retrieve_hybrid, question, index_name, top_k, from_
+            )
         except Exception:  # noqa: BLE001
             logger.exception("Hybrid retrieval failed; using vector results only")
             return vector
