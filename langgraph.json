@@ -2,7 +2,9 @@
   "$schema": "https://langgra.ph/schema.json",
   "dependencies": ["."],
   "graphs": {
-    "documentation-assistant": "./src/agent/graph.py:graph"
+    "documentation-assistant": "./src/agent/graph.py:graph",
+    "self-rag-assistant": "./src/agent/self_rag.py:graph",
+    "query-decomposition-assistant": "./src/agent/query_decomposition.py:graph"
   },
   "env": ".env",
   "image_distro": "wolfi"

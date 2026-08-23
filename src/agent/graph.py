@@ -9,7 +9,13 @@ from dataclasses import dataclass
 from pprint import pprint
 from typing import Annotated, Any
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    SystemMessage,
+    ToolMessage,
+    convert_to_messages,
+)
 from langchain_core.tools import BaseTool, tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import Connection
@@ -58,6 +64,17 @@ system_prompt: str = (
     "If you don't know the answer, just say that you don't know.\n"
     "Use three sentences maximum and keep the answer concise. "
     "Make sure to make at least a tool call to get more context."
+    """
+    Include these sources your answer next to any relevant statements. For example, for source # 1 use [1]. 
+
+    List your sources in order at the bottom of your answer. [1] Source 1, [2] Source 2, etc
+            
+    If the source is: <Document source="assistant/docs/llama3_1.pdf" page="7"/>' then just list: 
+            
+    [1] assistant/docs/llama3_1.pdf, page 7 
+            
+    And skip the addition of the brackets as well as the Document source preamble in your citation."""
+    ""
 )
 
 # Search query writing
@@ -113,16 +130,22 @@ def _mcp_client() -> MultiServerMCPClient:
     return MultiServerMCPClient(connections)
 
 
-_docs_pipeline = RagPipeline(RagConfig(strategy="vector", rerank=False))
+_docs_pipeline = RagPipeline(
+    RagConfig(strategy="vector", top_k=10, rerank=False, rerank_top_n=5)
+)
 preload_voyage_tokenizer()
 _docs_pipeline.warmup()
+
+client = _mcp_client()
 
 
 @tool
 async def search_documentation(question: str) -> dict[str, Any]:
     """Search indexed documentation for AI agent, applied AI, and ML questions."""
     result = await _docs_pipeline.aretrieve(
-        question, index_name="chunk_1024", rerank=True
+        f"{question}",
+        index_name="chunk_1024",
+        rerank=True,
     )
     return result.as_vector_payload()
 
@@ -134,6 +157,7 @@ async def web_search(query: str) -> str:
     tavily_search = TavilySearch(max_results=3)
 
     # Search
+    logger.info("Query: %s", query)
     data = await tavily_search.ainvoke({"query": query})
     search_docs = data.get("results", data)
     # pprint(search_docs)
@@ -174,14 +198,35 @@ async def assistant(state: State, runtime: Runtime[Context]) -> dict[str, Any]:
     return {"messages": [response]}
 
 
-client = _mcp_client()
+def combine(state: State) -> dict[str, Any]:
+    """Merge the latest round of tool results into one context blob."""
+    pprint("\n\n")
+    pprint("\n\n")
+    logger.info("Conbine state")
+    messages = convert_to_messages(state.messages)
+    tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
+    last_ai = next(
+        m
+        for m in reversed(messages)
+        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
+    )
+    ids = {tc["id"] for tc in last_ai.tool_calls}
+    round_msgs = [m for m in tool_msgs if m.tool_call_id in ids]
+
+    chunks = []
+    for m in round_msgs:
+        chunks.append(f"## {m.name}\n{m.content}")
+    return {"context": "\n\n".join(chunks)}
+
 
 graph = (
     StateGraph(State, context_schema=Context)
     .add_node(assistant)
     .add_node("tools", run_tools)
+    .add_node(combine)
     .add_edge("__start__", "assistant")
-    .add_conditional_edges("assistant", tools_condition)
-    .add_edge("tools", "assistant")
+    .add_conditional_edges("assistant", tools_condition)  # tools | _end_
+    .add_edge("tools", "combine")
+    .add_edge("combine", "assistant")
     .compile(name="Documentation Assistant")
 )
