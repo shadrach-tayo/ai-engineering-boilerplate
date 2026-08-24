@@ -1,0 +1,155 @@
+{
+  "created_at": "2026-08-24T21:11:41.949342+00:00",
+  "protocol": {
+    "strategy": "vector",
+    "score_top_k": 5,
+    "baseline_retrieve_top_k": 5,
+    "rerank_retrieve_top_k": 10,
+    "rerank_top_n": 5,
+    "pause_s": 8.0,
+    "case_ids": [
+      "q01_agent_definition",
+      "q02_guardrails",
+      "q03_architecture_patterns",
+      "q05_evaluations",
+      "q09_coinbase_agents"
+    ],
+    "n_cases": 5,
+    "indexes": [
+      "chunk_256",
+      "chunk_512",
+      "chunk_1024"
+    ]
+  },
+  "runs": [
+    {
+      "index_name": "chunk_256",
+      "strategy": "vector",
+      "rerank": false,
+      "retrieve_top_k": 5,
+      "rerank_top_n": null,
+      "summary": {
+        "n": 5.0,
+        "source_hit_at_k": 1.0,
+        "page_hit_at_k": 1.0,
+        "phrase_recall": 1.0,
+        "auto_relevant": 1.0,
+        "n_errors": 0,
+        "elapsed_ms": 1207,
+        "retrieve_ms": 1207
+      }
+    },
+    {
+      "index_name": "chunk_256",
+      "strategy": "vector",
+      "rerank": true,
+      "retrieve_top_k": 10,
+      "rerank_top_n": 5,
+      "summary": {
+        "n": 5.0,
+        "source_hit_at_k": 1.0,
+        "page_hit_at_k": 1.0,
+        "phrase_recall": 1.0,
+        "auto_relevant": 1.0,
+        "n_errors": 0,
+        "elapsed_ms": 43542,
+        "retrieve_ms": 3516
+      }
+    },
+    {
+      "index_name": "chunk_512",
+      "strategy": "vector",
+      "rerank": false,
+      "retrieve_top_k": 5,
+      "rerank_top_n": null,
+      "summary": {
+        "n": 5.0,
+        "source_hit_at_k": 1.0,
+        "page_hit_at_k": 1.0,
+        "phrase_recall": 1.0,
+        "auto_relevant": 1.0,
+        "n_errors": 0,
+        "elapsed_ms": 884,
+        "retrieve_ms": 884
+      }
+    },
+    {
+      "index_name": "chunk_512",
+      "strategy": "vector",
+      "rerank": true,
+      "retrieve_top_k": 10,
+      "rerank_top_n": 5,
+      "summary": {
+        "n": 5.0,
+        "source_hit_at_k": 1.0,
+        "page_hit_at_k": 1.0,
+        "phrase_recall": 1.0,
+        "auto_relevant": 1.0,
+        "n_errors": 0,
+        "elapsed_ms": 43680,
+        "retrieve_ms": 3658
+      }
+    },
+    {
+      "index_name": "chunk_1024",
+      "strategy": "vector",
+      "rerank": false,
+      "retrieve_top_k": 5,
+      "rerank_top_n": null,
+      "summary": {
+        "n": 5.0,
+        "source_hit_at_k": 1.0,
+        "page_hit_at_k": 1.0,
+        "phrase_recall": 0.9333333333333333,
+        "auto_relevant": 1.0,
+        "n_errors": 0,
+        "elapsed_ms": 847,
+        "retrieve_ms": 847
+      }
+    },
+    {
+      "index_name": "chunk_1024",
+      "strategy": "vector",
+      "rerank": true,
+      "retrieve_top_k": 10,
+      "rerank_top_n": 5,
+      "summary": {
+        "n": 5.0,
+        "source_hit_at_k": 1.0,
+        "page_hit_at_k": 1.0,
+        "phrase_recall": 0.8666666666666666,
+        "auto_relevant": 1.0,
+        "n_errors": 0,
+        "elapsed_ms": 43676,
+        "retrieve_ms": 3656
+      }
+    }
+  ],
+  "verdict": {
+    "errors": 0,
+    "wins": 0,
+    "ties": 2,
+    "losses": 1,
+    "pairs": [
+      {
+        "index_name": "chunk_256",
+        "delta_page": 0.0,
+        "delta_phrase": 0.0,
+        "outcome": "tie"
+      },
+      {
+        "index_name": "chunk_512",
+        "delta_page": 0.0,
+        "delta_phrase": 0.0,
+        "outcome": "tie"
+      },
+      {
+        "index_name": "chunk_1024",
+        "delta_page": 0.0,
+        "delta_phrase": -0.06666666666666676,
+        "outcome": "vector better"
+      }
+    ],
+    "text": "Rerank did not beat raw vector on any index (2 ties, 1 vector win). The earlier grid claim holds under a fair, rate-limit-free protocol."
+  }
+}

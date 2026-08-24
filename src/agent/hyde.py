@@ -184,7 +184,7 @@ def _mcp_client() -> MultiServerMCPClient:
 
 
 _docs_pipeline = RagPipeline(
-    RagConfig(strategy="vector", rerank=False, top_k=20, rerank_top_n=10)
+    RagConfig(strategy="vector", rerank=False, top_k=10, rerank_top_n=5)
 )
 preload_voyage_tokenizer()
 _docs_pipeline.warmup()

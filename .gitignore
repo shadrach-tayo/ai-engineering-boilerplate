@@ -164,3 +164,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 .langgraph_api/
+
+exports/**/runs/
+exports/**/generations/
+exports/thread-comparison/threads.json
+exports/rag-experiments/rerank-compare/chunk_*.json

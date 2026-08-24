@@ -134,25 +134,31 @@ class RagPipeline:
         top_k: int | None = None,
         from_: int = 0,
         rerank: bool | None = None,
+        rerank_top_n: int | None = None,
     ) -> RetrievalResult:
         """Fetch ranked chunks for a question using the selected strategy."""
         index = index_name or self.config.index_name
         chosen = strategy or self.config.strategy
         k = top_k or self.config.top_k
         should_rerank = self.config.rerank if rerank is None else rerank
+        previous_top_n = self.config.rerank_top_n
+        if rerank_top_n is not None:
+            self.config.rerank_top_n = rerank_top_n
+        try:
+            if chosen == "vector":
+                result = self._retrieve_vector(question, index, k)
+            elif chosen == "hybrid":
+                result = self._retrieve_hybrid(question, index, k, from_)
+            elif chosen == "ensemble":
+                result = self._retrieve_ensemble(question, index, k, from_)
+            else:
+                raise ValueError(f"Unknown retrieval strategy: {chosen}")
 
-        if chosen == "vector":
-            result = self._retrieve_vector(question, index, k)
-        elif chosen == "hybrid":
-            result = self._retrieve_hybrid(question, index, k, from_)
-        elif chosen == "ensemble":
-            result = self._retrieve_ensemble(question, index, k, from_)
-        else:
-            raise ValueError(f"Unknown retrieval strategy: {chosen}")
-
-        if should_rerank and result.docs:
-            result = self._apply_rerank(result, question)
-        return result
+            if should_rerank and result.docs:
+                result = self._apply_rerank(result, question)
+            return result
+        finally:
+            self.config.rerank_top_n = previous_top_n
 
     async def aretrieve(
         self,
@@ -163,27 +169,33 @@ class RagPipeline:
         top_k: int | None = None,
         from_: int = 0,
         rerank: bool | None = None,
+        rerank_top_n: int | None = None,
     ) -> RetrievalResult:
         """Fetch ranked chunks without blocking the caller’s event loop on sync drivers."""
         index = index_name or self.config.index_name
         chosen = strategy or self.config.strategy
         k = top_k or self.config.top_k
         should_rerank = self.config.rerank if rerank is None else rerank
+        previous_top_n = self.config.rerank_top_n
+        if rerank_top_n is not None:
+            self.config.rerank_top_n = rerank_top_n
+        try:
+            if chosen == "vector":
+                result = await self._aretrieve_vector(question, index, k)
+            elif chosen == "hybrid":
+                result = await asyncio.to_thread(
+                    self._retrieve_hybrid, question, index, k, from_
+                )
+            elif chosen == "ensemble":
+                result = await self._aretrieve_ensemble(question, index, k, from_)
+            else:
+                raise ValueError(f"Unknown retrieval strategy: {chosen}")
 
-        if chosen == "vector":
-            result = await self._aretrieve_vector(question, index, k)
-        elif chosen == "hybrid":
-            result = await asyncio.to_thread(
-                self._retrieve_hybrid, question, index, k, from_
-            )
-        elif chosen == "ensemble":
-            result = await self._aretrieve_ensemble(question, index, k, from_)
-        else:
-            raise ValueError(f"Unknown retrieval strategy: {chosen}")
-
-        if should_rerank and result.docs:
-            result = await asyncio.to_thread(self._apply_rerank, result, question)
-        return result
+            if should_rerank and result.docs:
+                result = await asyncio.to_thread(self._apply_rerank, result, question)
+            return result
+        finally:
+            self.config.rerank_top_n = previous_top_n
 
     def warmup(self, index_name: str | None = None) -> None:
         """Open the vector store so later retrieves skip engine setup."""
@@ -394,9 +406,15 @@ class RagPipeline:
             top_n=min(self.config.rerank_top_n, len(result.docs)),
         )
         ranked_docs = [result.docs[item.index] for item in response.results]
+        ranked_meta = [
+            result.metadata[item.index]
+            if item.index < len(result.metadata)
+            else {}
+            for item in response.results
+        ]
         return RetrievalResult(
             docs=ranked_docs,
-            metadata=result.metadata,
+            metadata=ranked_meta,
             rerank=[item.dict() for item in response.results],
             es_hits=result.es_hits,
             total=result.total,

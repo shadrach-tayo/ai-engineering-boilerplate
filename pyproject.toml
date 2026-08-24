@@ -42,6 +42,7 @@ dependencies = [
 rag = "rag.main:main"
 rag-agent = "rag.main:agent_rag"
 rag-eval = "rag.eval.run:main"
+rag-eval-grid = "rag.eval.grid:main"
 search-api = "api.app:run"
 
 [project.optional-dependencies]
