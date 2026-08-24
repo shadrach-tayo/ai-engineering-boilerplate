@@ -41,7 +41,7 @@ MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", DEFAULT_MCP_SERVER_URL)
 # for the lifetime of the langgraph process.
 _oauth_auth = create_oauth_provider(MCP_SERVER_URL)
 
-model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+model = ChatOpenAI(model="gpt-5-mini", temperature=0)
 grade_model = ChatOpenAI(model="gpt-5-mini", temperature=0)
 
 
@@ -427,8 +427,6 @@ async def retrieve_sub(state: SubQueryInput) -> dict[str, Any]:
         )
         parsed = GradeRelevance.model_validate(result)
         graded.append({**doc, "is_rel": parsed.score, "sub_query": query})
-
-    logger.info("Retrieved %s docs (iterations=%s)", len(docs), state["iterations"])
     return {"documents": graded}
 
 
@@ -471,7 +469,6 @@ async def grade_utility(state: State) -> dict[str, Any]:
         ]
     )
     parsed = GradeUtility.model_validate(result)
-    logger.info("IsUSE: %s", parsed.score)
     return {"utility": parsed.score}
 
 

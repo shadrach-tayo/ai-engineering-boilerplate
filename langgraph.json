@@ -4,7 +4,8 @@
   "graphs": {
     "documentation-assistant": "./src/agent/graph.py:graph",
     "self-rag-assistant": "./src/agent/self_rag.py:graph",
-    "query-decomposition-assistant": "./src/agent/query_decomposition.py:graph"
+    "query-decomposition-assistant": "./src/agent/query_decomposition.py:graph",
+    "hyde-assistant": "./src/agent/hyde.py:graph"
   },
   "env": ".env",
   "image_distro": "wolfi"
