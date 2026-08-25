@@ -1,7 +1,4 @@
-"""New LangGraph Agent.
-
-This module defines a custom graph.
-"""
+"""LangGraph documentation assistants registered in ``langgraph.json``."""
 
 from agent.graph import graph
 

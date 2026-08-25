@@ -1,29 +1,25 @@
-"""Search module for elastic search package."""
+"""Elasticsearch BM25 + dense kNN search with reciprocal rank fusion."""
 
-import json
+from __future__ import annotations
+
 import logging
 import os
 import time
 from pprint import pprint
+from typing import Any
 
 from elasticsearch import Elasticsearch
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import CharacterTextSplitter
-from sentence_transformers import SentenceTransformer
+
+from rag.embeddings import embeddings_model
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 
 ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "http://localhost:9200")
-_st_models: dict[str, SentenceTransformer] = {}
-
-
-def _load_st_model(name: str) -> SentenceTransformer:
-    model = _st_models.get(name)
-    if model is None:
-        model = SentenceTransformer(name)
-        _st_models[name] = model
-    return model
+_EMBED_BATCH = 32
 
 
 def reciprocal_rank_fuse(
@@ -49,68 +45,72 @@ def reciprocal_rank_fuse(
 
 
 class Search:
-    """..."""
+    """Index and query Elasticsearch with BM25 plus the same dense embedder as pgvector."""
 
     def __init__(
         self,
         chunk_size: int,
         embedding_dims: int,
-        embedding_model: str | SentenceTransformer | None = None,
+        embeddings: Embeddings | None = None,
         chunk_overlap: int = 30,
     ):
-        """Connect to Elasticsearch and load the kNN embedding model."""
+        """Connect to Elasticsearch and store the shared embedding model."""
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.embedding_dims = embedding_dims
-        if isinstance(embedding_model, SentenceTransformer):
-            self.model = embedding_model
-        else:
-            self.model = _load_st_model(embedding_model or "all-MiniLM-L6-v2")
+        self.embeddings = embeddings or embeddings_model
         self.es = Elasticsearch(ELASTICSEARCH_URL)
         client_info = self.es.info()
         logger.info("Connecting to Elasticsearch!")
         pprint(client_info.body)
 
-    def get_mapping(self, index: str):  # noqa: D102
+    def get_mapping(self, index: str) -> Any:
+        """Return the Elasticsearch mapping for an index."""
         return self.es.indices.get_mapping(index=index)
 
     def create_index(self, index_name: str = "default-index"):
-        """Create or Upsert existing index."""
+        """Create or replace an index with BM25 text fields and dense vectors."""
         self.es.indices.delete(index=index_name, ignore_unavailable=True)
-        dims = self.model.get_embedding_dimension()
         self.es.indices.create(
             index=index_name,
             mappings={
                 "properties": {
+                    "content": {"type": "text"},
+                    "source": {"type": "keyword"},
+                    "page": {"type": "integer"},
                     "embedding": {
                         "type": "dense_vector",
-                        "dims": dims,
+                        "dims": self.embedding_dims,
                         "index": True,
                         "similarity": "cosine",
-                    }
+                    },
                 }
             },
         )
 
-    def get_embedding(self, text: str) -> list[float]:  # noqa: D102
-        return self.model.encode(text).tolist()
+    def get_embedding(self, text: str) -> list[float]:
+        """Embed a query or document with the shared embedding model."""
+        return self.embeddings.embed_query(text)
 
     def insert_document(self, index_name: str, document):
         """Insert new document to index."""
         splits = self._split_documents(document)
-        for split in splits:
+        for split, vector in zip(
+            splits, self._embed_texts([s.page_content for s in splits]), strict=True
+        ):
             self.es.index(
                 index=index_name,
-                body=self._to_es_doc(split),
+                body=self._to_es_doc(split, vector),
             )
 
     def insert_documents(self, index_name: str, documents):
-        """Bulk Insert new documents to index."""
+        """Bulk-insert chunked documents with batched embeddings."""
         operations = []
         splits = self._split_documents(documents)
-        for document in splits:
+        vectors = self._embed_texts([document.page_content for document in splits])
+        for document, vector in zip(splits, vectors, strict=True):
             operations.append({"index": {"_index": index_name}})
-            operations.append(self._to_es_doc(document))
+            operations.append(self._to_es_doc(document, vector))
         return self.es.bulk(operations=operations)
 
     def reindex(self, index_name: str, documents):
@@ -166,21 +166,35 @@ class Search:
         """Retrieve a document by id from an index."""
         return self.es.get(index=index, id=id)
 
-    def _to_es_doc(self, doc: Document) -> dict:
+    def _embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """Embed texts in batches, retrying Voyage/provider rate limits."""
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), _EMBED_BATCH):
+            batch = texts[start : start + _EMBED_BATCH]
+            last_exc: BaseException | None = None
+            for attempt in range(4):
+                try:
+                    vectors.extend(self.embeddings.embed_documents(batch))
+                    last_exc = None
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    if "429" not in str(exc) and "rate" not in str(exc).lower():
+                        raise
+                    time.sleep(2**attempt)
+            if last_exc is not None:
+                raise last_exc
+        return vectors
+
+    def _to_es_doc(self, doc: Document, vector: list[float]) -> dict:
         return {
             "content": doc.page_content,
-            "embedding": self.get_embedding(doc.page_content),
-            **doc.metadata,  # page, source, created_at
+            "embedding": vector,
+            **doc.metadata,
         }
 
     def _split_documents(self, documents):
         logger.info("splitting documents")
-        # text_splitter = RecursiveCharacterTextSplitter(
-        # chunk_size=1000,
-        #     chunk_overlap=200,
-        #     add_start_index=True,
-        # )
-        # return text_splitter.split_documents(documents)
         text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
             encoding_name="cl100k_base",
             chunk_size=self.chunk_size,

@@ -18,7 +18,7 @@ tools.
 
 - Four graphs exposed through `langgraph.json` and LangGraph Studio.
 - Vector retrieval with Voyage embeddings and Postgres/pgvector.
-- Hybrid BM25 + MiniLM kNN retrieval with Elasticsearch RRF fusion.
+- Hybrid BM25 + Voyage-3.5 kNN retrieval with Elasticsearch RRF fusion.
 - An ensemble strategy that combines vector and hybrid results.
 - Optional Cohere reranking and OpenAI answer generation.
 - Relevance, support, and answer-utility grading in the corrective graphs.
@@ -31,23 +31,28 @@ local documentation search and Tavily web search tools.
 
 ## Architecture
 
-The indexing path uses 512-token chunks. Chunks are embedded for pgvector and
-indexed directly as text for Elasticsearch BM25; query-time results are fused
-before the Self-RAG relevance check.
+The indexing path uses 512-token chunks. The same Voyage-3.5 embeddings go
+into Postgres/pgvector and Elasticsearch dense kNN; Elasticsearch also
+indexes the chunk text for BM25. Query-time BM25 and kNN hits are fused with
+RRF.
 
 ```mermaid
 flowchart LR
     docs[Source documents] --> ingest[Ingest] --> chunk[Chunk: 512 tokens]
-    chunk -->|semantic path| embed[Voyage embeddings] --> pg[(Postgres + pgvector)]
-    chunk -->|lexical path| es[(Elasticsearch BM25)]
+    chunk --> embed[Voyage-3.5 embeddings]
+    embed --> pg[(Postgres + pgvector)]
+    embed --> esKnn[Elasticsearch kNN]
+    chunk --> esBm25[(Elasticsearch BM25)]
 
     question[User question] --> router[Multi-source router]
     router -->|local docs| tools[Local RAG tools]
     router -->|web fallback| tavily[Tavily]
     tools -->|vector search| pg
-    tools -->|keyword search| es
+    tools -->|hybrid search| esKnn
+    tools -->|hybrid search| esBm25
     pg --> fusion[RRF / hybrid fusion]
-    es --> fusion
+    esKnn --> fusion
+    esBm25 --> fusion
     fusion --> grade{Evidence relevant?}
     tavily --> grade
     grade -->|yes| generate[Generate answer] --> answer([Grounded answer])
@@ -211,8 +216,16 @@ ELASTICSEARCH_URL=http://localhost:9200
 ```
 
 The assistants and search UI expect populated `chunk_256`, `chunk_512`, and/or
-`chunk_1024` indexes. `RagPipeline.ingest(...)` is the current programmatic
-ingestion API; there is not yet a dedicated ingestion command.
+`chunk_1024` indexes. Rebuild Elasticsearch hybrid indexes (Voyage-3.5 kNN +
+BM25) with:
+
+```bash
+uv run rag-ingest
+```
+
+`RagPipeline.ingest(...)` can also write Postgres and/or Elasticsearch. The
+hybrid path must use the same embedder as pgvector; mixing MiniLM kNN with
+Voyage vectors is what made the first hybrid eval collapse onto one PDF.
 
 ## Run the graphs
 
@@ -261,14 +274,12 @@ uv run rag-eval --index chunk_512 --strategy vector --top-k 5 --no-rerank
 Run the full chunk-size, strategy, and reranking grid:
 
 ```bash
-uv run rag-eval-grid --top-k 5
+uv run rag-eval-grid --top-k 5 --no-generate --no-rerank
 ```
 
-Add `--no-generate` to skip answer generation. Outputs are written under
-`exports/rag-experiments/`. The latest checked-in report found
-`chunk_512 + vector + no rerank` to be the best tested configuration; see
-[`exports/rag-experiments/report.md`](exports/rag-experiments/report.md) for
-the full results and caveats.
+Add `--no-generate` to skip answer generation and `--no-rerank` to skip
+Cohere (trial keys 429 after a few calls). Outputs are written under
+`exports/rag-experiments/`.
 
 Cohere trial keys allow 10 rerank calls per minute. To compare vector vs
 rerank without 429s, run the paced 5-question check (retrieve 10, rerank to

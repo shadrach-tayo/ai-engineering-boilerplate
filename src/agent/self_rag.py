@@ -1,4 +1,9 @@
-"""LangGraph agent that uses LiveMigrate memory tools over MCP + OAuth."""
+"""Inference-time Self-RAG documentation assistant.
+
+Decides whether to retrieve, grades passages (IsREL), generates an answer,
+then grades support (IsSUP) and utility (IsUSE). Irrelevant hits trigger a
+query rewrite; a later retry falls back to Tavily web search.
+"""
 
 from __future__ import annotations
 
@@ -7,25 +12,20 @@ import logging
 import operator
 import os
 from dataclasses import dataclass, field
-from pprint import pprint
 from typing import Annotated, Any, Literal
 
 from langchain_core.messages import (
-    AIMessage,
     BaseMessage,
     HumanMessage,
     SystemMessage,
-    ToolMessage,
     convert_to_messages,
 )
-from langchain_core.tools import BaseTool, tool
+from langchain_core.tools import tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import Connection
 from langchain_openai import ChatOpenAI
 from langchain_tavily import TavilySearch
 from langgraph.graph import END, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
@@ -164,7 +164,9 @@ class Context(TypedDict):
     thread_id: str
 
 
-class GradedDoc(TypedDict):  # noqa: D101
+class GradedDoc(TypedDict):
+    """Retrieved passage plus Self-RAG relevance and support labels."""
+
     content: str
     source: str
     page: int | None
@@ -174,10 +176,10 @@ class GradedDoc(TypedDict):  # noqa: D101
 
 @dataclass
 class State:
-    """Input state for the agent.
+    """Per-turn graph state for the Self-RAG assistant.
 
-    Defines the initial structure of incoming data.
-    See: https://langchain-ai.github.io/langgraph/concepts/low_level/#state
+    ``messages`` uses an append reducer. Retrieval scratch fields are cleared
+    in ``entry`` whenever the latest message is a new user question.
     """
 
     messages: Annotated[list[BaseMessage], operator.add]
@@ -189,29 +191,40 @@ class State:
     iterations: int = 0
 
 
-class SearchQuery(BaseModel):  # noqa: D101
+class SearchQuery(BaseModel):
+    """Rewritten search query produced by the rewrite node."""
+
     search_query: str | None = Field(
         default=None, description="Search query for retrieval."
     )
 
 
-class DecideRetrieval(BaseModel):  # noqa: D101
+class DecideRetrieval(BaseModel):
+    """Whether the next step should retrieve, skip retrieval, or reuse docs."""
+
     decision: Literal["yes", "no", "none"]
 
 
-class GradeRelevance(BaseModel):  # noqa: D101
+class GradeRelevance(BaseModel):
+    """IsREL score for a single passage."""
+
     score: Literal["relevant", "irrelevant"]
 
 
-class GradeSupport(BaseModel):  # noqa: D101
+class GradeSupport(BaseModel):
+    """IsSUP score for how well a passage backs the drafted answer."""
+
     score: Literal["fully", "partially", "none"]
 
 
-class GradeUtility(BaseModel):  # noqa: D101
+class GradeUtility(BaseModel):
+    """IsUSE score from 1 (useless) to 5 (complete and on-topic)."""
+
     score: int
 
 
 def _mcp_client() -> MultiServerMCPClient:
+    """Return the shared MCP client (remote servers are currently disabled)."""
     connections: dict[str, Connection] = {
         # "memory": {
         #     "transport": "streamable_http",
@@ -232,10 +245,12 @@ client = _mcp_client()
 
 
 def _question(state: State) -> str:
+    """Return the active search query, falling back to the latest user text."""
     return state.question or _last_human_text(state)
 
 
 def _last_human_text(state: State) -> str:
+    """Extract the most recent human message, including Studio dict payloads."""
     for message in reversed(convert_to_messages(state.messages)):
         if isinstance(message, HumanMessage):
             return (
@@ -247,11 +262,13 @@ def _last_human_text(state: State) -> str:
 
 
 def _relevant_docs(documents: list[GradedDoc]) -> list[GradedDoc]:
+    """Keep passages marked relevant, or all passages if none passed IsREL."""
     graded = [doc for doc in documents if doc.get("is_rel") == "relevant"]
     return graded or documents
 
 
 def _format_context(documents: list[GradedDoc]) -> str:
+    """Render passages as citation-ready XML blocks for the generate prompt."""
     chunks: list[str] = []
     for doc in documents:
         page = f' page="{doc["page"]}"' if doc.get("page") is not None else ""
@@ -260,6 +277,7 @@ def _format_context(documents: list[GradedDoc]) -> str:
 
 
 def _docs_from_payload(payload: dict[str, Any]) -> list[GradedDoc]:
+    """Convert a RagPipeline vector payload into ungraded GradedDoc rows."""
     contents = payload.get("docs") or []
     metas = payload.get("original_docs") or []
     reranks = payload.get("rerank") or []
@@ -281,6 +299,7 @@ def _docs_from_payload(payload: dict[str, Any]) -> list[GradedDoc]:
 
 
 async def _docs_from_web(query: str) -> list[GradedDoc]:
+    """Fetch Tavily results and wrap them as ungraded documents."""
     data = await TavilySearch(max_results=3).ainvoke({"query": query})
     results = data.get("results", data)
     return [
@@ -296,15 +315,18 @@ async def _docs_from_web(query: str) -> list[GradedDoc]:
 
 
 def _is_new_turn(state: State) -> bool:
+    """Return True when the latest message is a new user question."""
     messages = convert_to_messages(state.messages)
     return bool(messages) and isinstance(messages[-1], HumanMessage)
 
 
 def _user_question(state: State) -> str:
+    """Return the user's original question for this turn."""
     return _last_human_text(state)
 
 
 def _search_query(state: State) -> str:
+    """Use a rewritten query on retries; otherwise use the user question."""
     if state.question and not _is_new_turn(state):
         return state.question
     return _user_question(state)
@@ -354,7 +376,7 @@ async def web_search(query: str) -> str:
 
 
 async def generate(state: State) -> dict[str, Any]:
-    """Bind the same tool set the tools node can execute, then invoke the model."""
+    """Draft an answer from relevant passages and append it to messages."""
     question = _question(state)
     docs = _relevant_docs(state.documents)
     context = _format_context(docs)
@@ -372,7 +394,7 @@ async def generate(state: State) -> dict[str, Any]:
 
 
 async def decide_retrieve(state: State) -> dict[str, Any]:
-    """."""
+    """Decide whether to retrieve, skip retrieval, or reuse existing documents."""
     question = _question(state)
     user = (
         f"Question: {question}\n"
@@ -394,7 +416,7 @@ async def decide_retrieve(state: State) -> dict[str, Any]:
 
 
 async def retrieve(state: State) -> dict[str, Any]:
-    """."""
+    """Retrieve indexed docs, or Tavily after a rewrite retry."""
     question = _search_query(state)
     if state.iterations >= 1:
         docs = await _docs_from_web(question)
@@ -406,11 +428,12 @@ async def retrieve(state: State) -> dict[str, Any]:
 
 
 async def grade_documents(state: State) -> dict[str, Any]:
-    """."""
+    """Score each passage for relevance (IsREL) to the question."""
     question = _question(state)
     grader = grade_model.with_structured_output(GradeRelevance)
 
     async def _grade(doc: GradedDoc) -> GradedDoc:
+        """Return ``doc`` with an IsREL score filled in."""
         result = await grader.ainvoke(
             [
                 SystemMessage(content=GRADE_REL_PROMPT),
@@ -431,13 +454,14 @@ async def grade_documents(state: State) -> dict[str, Any]:
 
 
 async def grade_supports(state: State) -> dict[str, Any]:
-    """."""
+    """Score whether relevant passages support the drafted answer (IsSUP)."""
     if not state.generation or not state.documents:
         return {}
     question = _question(state)
     grader = grade_model.with_structured_output(GradeSupport)
 
     async def _grade(doc: GradedDoc) -> GradedDoc:
+        """Return ``doc`` with an IsSUP score, or ``none`` if it was irrelevant."""
         if doc.get("is_rel") != "relevant":
             return {**doc, "is_sup": "none"}
         result = await grader.ainvoke(
@@ -459,7 +483,7 @@ async def grade_supports(state: State) -> dict[str, Any]:
 
 
 async def grade_utility(state: State) -> dict[str, Any]:
-    """."""
+    """Score how useful the drafted answer is (IsUSE, 1–5)."""
     result = await model.with_structured_output(GradeUtility).ainvoke(
         [
             SystemMessage(content=GRADE_USE_PROMPT),
@@ -472,20 +496,23 @@ async def grade_utility(state: State) -> dict[str, Any]:
     return {"utility": parsed.score}
 
 
-async def retrieve_or_generate(state: State) -> Literal["retrieve", "generate"]:  # noqa: D103
+async def retrieve_or_generate(state: State) -> Literal["retrieve", "generate"]:
+    """Route to retrieval when the decision is yes; otherwise generate."""
     if state.retrieve_decision == "yes":
         return "retrieve"
 
     return "generate"
 
 
-def check_quality(state: State) -> Literal["decide_retrieve", "__end__"]:  # noqa: D103
+def check_quality(state: State) -> Literal["decide_retrieve", "__end__"]:
+    """End the turn, or loop back to retrieval after the rewrite budget."""
     if (state.utility or 0) >= 3 and state.iterations >= MAX_ITERS:
         return "decide_retrieve"
     return "__end__"
 
 
-def is_relevant(state: State) -> Literal["generate", "rewrite"]:  # noqa: D103
+def is_relevant(state: State) -> Literal["generate", "rewrite"]:
+    """Generate if any passage is relevant or retries are exhausted; else rewrite."""
     if any(doc.get("is_rel") == "relevant" for doc in state.documents):
         return "generate"
     if state.iterations >= MAX_ITERS:
@@ -494,7 +521,8 @@ def is_relevant(state: State) -> Literal["generate", "rewrite"]:  # noqa: D103
     return "rewrite"
 
 
-async def rewrite(state: State) -> dict[str, Any]:  # noqa: D103
+async def rewrite(state: State) -> dict[str, Any]:
+    """Rewrite the search query after irrelevant retrieval and increment iterations."""
     # result = await model.with_structured_output(SearchQuery).ainvoke(
     #     [SystemMessage(content=REWRITE_PROMPT), HumanMessage(content=_question(state))]
     # )
@@ -521,7 +549,7 @@ async def rewrite(state: State) -> dict[str, Any]:  # noqa: D103
 
 
 def entry(state: State) -> dict[str, Any]:
-    """Entry point of graph, resets ephemeral state fields per turn."""
+    """Reset per-turn scratch fields when a new human message arrives."""
     return {
         "question": _user_question(state),
         "documents": [],

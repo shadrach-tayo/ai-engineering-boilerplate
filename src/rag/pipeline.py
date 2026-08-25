@@ -24,14 +24,19 @@ RetrievalStrategy = Literal["vector", "hybrid", "ensemble"]
 
 @dataclass
 class RagConfig:
-    """Runtime knobs for retrieval and generation."""
+    """Runtime knobs for retrieval and generation.
+
+    ``strategy`` selects dense Voyage vectors, Elasticsearch hybrid (BM25 +
+    the same Voyage kNN with RRF), or an ensemble of both. Keep
+    ``rerank_top_n`` in line with the ``top_k`` you score so rerank does not
+    silently shrink the result list.
+    """
 
     index_name: str = "chunk_256"
     chunk_size: int = 256
     chunk_overlap: int = 30
     embedding_model: str = "voyage-3.5"
     embedding_dim: int = 1024
-    es_embedding_model: str = "all-MiniLM-L6-v2"
     strategy: RetrievalStrategy = "vector"
     top_k: int = 5
     rerank: bool = True
@@ -120,7 +125,7 @@ class RagPipeline:
             self._search_client = Search(
                 self.config.chunk_size,
                 self.config.embedding_dim,
-                embedding_model=self.config.es_embedding_model,
+                embeddings=self.embeddings,
                 chunk_overlap=self.config.chunk_overlap,
             )
         return self._search_client
@@ -272,6 +277,7 @@ class RagPipeline:
             client.insert_documents(index, documents)
 
     def _vector_store(self, index_name: str) -> PostgresVectorStoreManager:
+        """Return a cached Postgres/pgvector store for ``index_name``."""
         store = self._stores.get(index_name)
         if store is None:
             store = PostgresVectorStoreManager(
@@ -285,6 +291,7 @@ class RagPipeline:
     def _retrieve_vector(
         self, question: str, index_name: str, top_k: int
     ) -> RetrievalResult:
+        """Retrieve the top-k dense neighbors from Postgres/pgvector."""
         retriever = self._vector_store(index_name).as_retriever(top_k)
         retrieval = retriever.invoke(question)
         docs = [doc.page_content for doc in retrieval]
@@ -299,6 +306,7 @@ class RagPipeline:
     async def _aretrieve_vector(
         self, question: str, index_name: str, top_k: int
     ) -> RetrievalResult:
+        """Async variant of dense vector retrieval."""
         retriever = self._vector_store(index_name).as_retriever(top_k)
         retrieval = await retriever.ainvoke(question)
         docs = [doc.page_content for doc in retrieval]
@@ -313,6 +321,7 @@ class RagPipeline:
     def _retrieve_hybrid(
         self, question: str, index_name: str, top_k: int, from_: int
     ) -> RetrievalResult:
+        """Retrieve BM25 + Voyage kNN hits fused with reciprocal rank fusion."""
         payload = self.search_client.hybrid_search(
             index_name=index_name,
             question=question,
@@ -340,6 +349,7 @@ class RagPipeline:
     def _retrieve_ensemble(
         self, question: str, index_name: str, top_k: int, from_: int
     ) -> RetrievalResult:
+        """Concatenate vector and hybrid hits, dropping near-duplicate texts."""
         vector = self._retrieve_vector(question, index_name, top_k)
         try:
             hybrid = self._retrieve_hybrid(question, index_name, top_k, from_)
@@ -361,6 +371,7 @@ class RagPipeline:
     async def _aretrieve_ensemble(
         self, question: str, index_name: str, top_k: int, from_: int
     ) -> RetrievalResult:
+        """Async ensemble retrieval; falls back to vector if hybrid fails."""
         vector = await self._aretrieve_vector(question, index_name, top_k)
         try:
             hybrid = await asyncio.to_thread(
@@ -398,6 +409,7 @@ class RagPipeline:
             self.config.rerank_top_n = previous
 
     def _apply_rerank(self, result: RetrievalResult, question: str) -> RetrievalResult:
+        """Reorder docs and metadata together with the configured Cohere model."""
         client = self._get_cohere()
         response = client.rerank(
             model=self.config.rerank_model,
@@ -407,9 +419,7 @@ class RagPipeline:
         )
         ranked_docs = [result.docs[item.index] for item in response.results]
         ranked_meta = [
-            result.metadata[item.index]
-            if item.index < len(result.metadata)
-            else {}
+            result.metadata[item.index] if item.index < len(result.metadata) else {}
             for item in response.results
         ]
         return RetrievalResult(
@@ -422,11 +432,13 @@ class RagPipeline:
         )
 
     def _get_cohere(self) -> cohere.ClientV2:
+        """Lazily construct the Cohere client used for reranking."""
         if self._cohere is None:
             self._cohere = cohere.ClientV2(api_key=os.environ.get("COHERE_API_KEY"))
         return self._cohere
 
     def _get_llm(self) -> ChatOpenAI:
+        """Lazily construct the chat model used for ``generate``."""
         if self._llm is None:
             self._llm = ChatOpenAI(
                 model=self.config.llm_model,
@@ -436,10 +448,12 @@ class RagPipeline:
 
 
 def _es_hit_content(hit: dict[str, Any]) -> str:
+    """Return the document text stored on an Elasticsearch hit."""
     return (hit.get("_source") or {}).get("content") or ""
 
 
 def _dedupe_texts(texts: list[str]) -> list[str]:
+    """Drop near-duplicate passages while preserving first-seen order."""
     seen: set[str] = set()
     unique: list[str] = []
     for text in texts:

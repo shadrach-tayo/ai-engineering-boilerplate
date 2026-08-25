@@ -1,4 +1,8 @@
-"""LangGraph agent that uses LiveMigrate memory tools over MCP + OAuth."""
+"""Baseline tool-calling documentation assistant.
+
+The model must call at least one retrieval tool. Tool results are merged into
+one context block, then the model answers from that context.
+"""
 
 from __future__ import annotations
 
@@ -113,13 +117,16 @@ class State:
     messages: Annotated[list[BaseMessage], operator.add]
 
 
-class SearchQuery(BaseModel):  # noqa: D101
+class SearchQuery(BaseModel):
+    """Search query drafted from the conversation for retrieval or web search."""
+
     search_query: str | None = Field(
         default=None, description="Search query for retrieval."
     )
 
 
 def _mcp_client() -> MultiServerMCPClient:
+    """Return the shared MCP client (remote servers are currently disabled)."""
     connections: dict[str, Connection] = {
         # "memory": {
         #     "transport": "streamable_http",

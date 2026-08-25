@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-08-24T20:45:58.078542+00:00",
+  "created_at": "2026-08-24T22:13:35.218476+00:00",
   "top_k": 5,
   "indexes": [
     "chunk_256",
@@ -24,7 +24,8 @@
         "phrase_recall": 1.0,
         "auto_relevant": 1.0,
         "n_errors": 0,
-        "elapsed_ms": 1731
+        "elapsed_ms": 1655,
+        "retrieve_ms": 1654
       }
     },
     {
@@ -38,7 +39,8 @@
         "phrase_recall": 1.0,
         "auto_relevant": 1.0,
         "n_errors": 0,
-        "elapsed_ms": 2123
+        "elapsed_ms": 2091,
+        "retrieve_ms": 2091
       }
     },
     {
@@ -52,7 +54,8 @@
         "phrase_recall": 1.0,
         "auto_relevant": 1.0,
         "n_errors": 0,
-        "elapsed_ms": 2161
+        "elapsed_ms": 3313,
+        "retrieve_ms": 3313
       }
     },
     {
@@ -66,77 +69,8 @@
         "phrase_recall": 1.0,
         "auto_relevant": 1.0,
         "n_errors": 0,
-        "elapsed_ms": 2440
-      }
-    },
-    {
-      "index_name": "chunk_256",
-      "strategy": "vector",
-      "rerank": true,
-      "summary": {
-        "n": 10.0,
-        "source_hit_at_k": 1.0,
-        "page_hit_at_k": 1.0,
-        "phrase_recall": 1.0,
-        "auto_relevant": 1.0,
-        "n_errors": 0,
-        "elapsed_ms": 5031
-      }
-    },
-    {
-      "index_name": "chunk_256",
-      "strategy": "ensemble",
-      "rerank": true,
-      "summary": {
-        "n": 5.0,
-        "source_hit_at_k": 1.0,
-        "page_hit_at_k": 1.0,
-        "phrase_recall": 1.0,
-        "auto_relevant": 1.0,
-        "n_errors": 5,
-        "elapsed_ms": 19784
-      }
-    },
-    {
-      "index_name": "chunk_512",
-      "strategy": "vector",
-      "rerank": true,
-      "summary": {
-        "n": 7.0,
-        "source_hit_at_k": 1.0,
-        "page_hit_at_k": 1.0,
-        "phrase_recall": 1.0,
-        "auto_relevant": 1.0,
-        "n_errors": 3,
-        "elapsed_ms": 20935
-      }
-    },
-    {
-      "index_name": "chunk_512",
-      "strategy": "ensemble",
-      "rerank": true,
-      "summary": {
-        "n": 5.0,
-        "source_hit_at_k": 1.0,
-        "page_hit_at_k": 1.0,
-        "phrase_recall": 1.0,
-        "auto_relevant": 1.0,
-        "n_errors": 5,
-        "elapsed_ms": 27660
-      }
-    },
-    {
-      "index_name": "chunk_1024",
-      "strategy": "vector",
-      "rerank": true,
-      "summary": {
-        "n": 6.0,
-        "source_hit_at_k": 1.0,
-        "page_hit_at_k": 1.0,
-        "phrase_recall": 1.0,
-        "auto_relevant": 1.0,
-        "n_errors": 4,
-        "elapsed_ms": 29903
+        "elapsed_ms": 3345,
+        "retrieve_ms": 3345
       }
     },
     {
@@ -150,7 +84,8 @@
         "phrase_recall": 0.9666666666666666,
         "auto_relevant": 1.0,
         "n_errors": 0,
-        "elapsed_ms": 1647
+        "elapsed_ms": 1729,
+        "retrieve_ms": 1729
       }
     },
     {
@@ -164,35 +99,23 @@
         "phrase_recall": 0.9666666666666666,
         "auto_relevant": 1.0,
         "n_errors": 0,
-        "elapsed_ms": 2454
+        "elapsed_ms": 3271,
+        "retrieve_ms": 3272
       }
     },
     {
-      "index_name": "chunk_1024",
-      "strategy": "ensemble",
-      "rerank": true,
+      "index_name": "chunk_256",
+      "strategy": "hybrid",
+      "rerank": false,
       "summary": {
-        "n": 6.0,
+        "n": 10.0,
         "source_hit_at_k": 1.0,
         "page_hit_at_k": 1.0,
-        "phrase_recall": 0.8888888888888888,
+        "phrase_recall": 0.9333333333333333,
         "auto_relevant": 1.0,
-        "n_errors": 4,
-        "elapsed_ms": 26818
-      }
-    },
-    {
-      "index_name": "chunk_512",
-      "strategy": "hybrid",
-      "rerank": true,
-      "summary": {
-        "n": 5.0,
-        "source_hit_at_k": 0.2,
-        "page_hit_at_k": 0.2,
-        "phrase_recall": 0.5333333333333333,
-        "auto_relevant": 0.2,
-        "n_errors": 5,
-        "elapsed_ms": 36731
+        "n_errors": 0,
+        "elapsed_ms": 1668,
+        "retrieve_ms": 1668
       }
     },
     {
@@ -201,12 +124,13 @@
       "rerank": false,
       "summary": {
         "n": 10.0,
-        "source_hit_at_k": 0.2,
-        "page_hit_at_k": 0.2,
-        "phrase_recall": 0.4333333333333333,
-        "auto_relevant": 0.2,
+        "source_hit_at_k": 1.0,
+        "page_hit_at_k": 1.0,
+        "phrase_recall": 0.9,
+        "auto_relevant": 1.0,
         "n_errors": 0,
-        "elapsed_ms": 357
+        "elapsed_ms": 1567,
+        "retrieve_ms": 1567
       }
     },
     {
@@ -215,124 +139,15 @@
       "rerank": false,
       "summary": {
         "n": 10.0,
-        "source_hit_at_k": 0.2,
-        "page_hit_at_k": 0.2,
-        "phrase_recall": 0.4333333333333333,
-        "auto_relevant": 0.2,
+        "source_hit_at_k": 1.0,
+        "page_hit_at_k": 1.0,
+        "phrase_recall": 0.8333333333333334,
+        "auto_relevant": 1.0,
         "n_errors": 0,
-        "elapsed_ms": 556
-      }
-    },
-    {
-      "index_name": "chunk_256",
-      "strategy": "hybrid",
-      "rerank": false,
-      "summary": {
-        "n": 10.0,
-        "source_hit_at_k": 0.2,
-        "page_hit_at_k": 0.2,
-        "phrase_recall": 0.4333333333333333,
-        "auto_relevant": 0.2,
-        "n_errors": 0,
-        "elapsed_ms": 4010
-      }
-    },
-    {
-      "index_name": "chunk_1024",
-      "strategy": "hybrid",
-      "rerank": true,
-      "summary": {
-        "n": 7.0,
-        "source_hit_at_k": 0.14285714285714285,
-        "page_hit_at_k": 0.14285714285714285,
-        "phrase_recall": 0.3333333333333333,
-        "auto_relevant": 0.14285714285714285,
-        "n_errors": 3,
-        "elapsed_ms": 39506
-      }
-    },
-    {
-      "index_name": "chunk_256",
-      "strategy": "hybrid",
-      "rerank": true,
-      "summary": {
-        "n_errors": 10,
-        "elapsed_ms": 33553
+        "elapsed_ms": 1614,
+        "retrieve_ms": 1613
       }
     }
   ],
-  "generation_runs": [
-    {
-      "index_name": "chunk_256",
-      "strategy": "vector",
-      "rerank": true,
-      "elapsed_ms": 17028,
-      "n_answers": 5,
-      "n_errors": 5
-    },
-    {
-      "index_name": "chunk_256",
-      "strategy": "hybrid",
-      "rerank": true,
-      "elapsed_ms": 27222,
-      "n_answers": 5,
-      "n_errors": 0
-    },
-    {
-      "index_name": "chunk_256",
-      "strategy": "ensemble",
-      "rerank": true,
-      "elapsed_ms": 20789,
-      "n_answers": 5,
-      "n_errors": 3
-    },
-    {
-      "index_name": "chunk_512",
-      "strategy": "vector",
-      "rerank": true,
-      "elapsed_ms": 15905,
-      "n_answers": 5,
-      "n_errors": 4
-    },
-    {
-      "index_name": "chunk_512",
-      "strategy": "hybrid",
-      "rerank": true,
-      "elapsed_ms": 25822,
-      "n_answers": 5,
-      "n_errors": 1
-    },
-    {
-      "index_name": "chunk_512",
-      "strategy": "ensemble",
-      "rerank": true,
-      "elapsed_ms": 21416,
-      "n_answers": 5,
-      "n_errors": 2
-    },
-    {
-      "index_name": "chunk_1024",
-      "strategy": "vector",
-      "rerank": true,
-      "elapsed_ms": 18017,
-      "n_answers": 5,
-      "n_errors": 3
-    },
-    {
-      "index_name": "chunk_1024",
-      "strategy": "hybrid",
-      "rerank": true,
-      "elapsed_ms": 25071,
-      "n_answers": 5,
-      "n_errors": 1
-    },
-    {
-      "index_name": "chunk_1024",
-      "strategy": "ensemble",
-      "rerank": true,
-      "elapsed_ms": 23707,
-      "n_answers": 5,
-      "n_errors": 2
-    }
-  ]
+  "generation_runs": []
 }

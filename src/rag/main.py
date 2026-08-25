@@ -39,7 +39,7 @@ base_path = __file__
 
 index_name = "chunk_1024"
 chunk_size = 1024
-embedding_dim = 256
+embedding_dim = 1024
 
 _pipeline: RagPipeline | None = None
 

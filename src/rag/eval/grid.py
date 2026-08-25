@@ -226,6 +226,7 @@ def write_markdown(leaderboard: list[dict[str, Any]], out_path: Path) -> None:
         "# RAG pipeline experiment",
         "",
         "Labeled 10-question retrieval eval across chunk indexes and retriever strategies.",
+        "Hybrid kNN uses the same Voyage-3.5 embedder as Postgres.",
         "",
         "| Rank | Index | Strategy | Rerank | source@k | page@k | phrase recall | auto relevant | errors | time (s) |",
         "|---:|---|---|---|---:|---:|---:|---:|---:|---:|",
@@ -255,8 +256,9 @@ def run_grid(
     out_dir: Path = DEFAULT_OUT,
     top_k: int = 5,
     generate: bool = True,
+    rerank: bool = True,
 ) -> dict[str, Any]:
-    """Sweep indexes, strategies, and rerank; persist every run."""
+    """Sweep indexes, strategies, and optional rerank; persist every run."""
     out_dir.mkdir(parents=True, exist_ok=True)
     runs_dir = out_dir / "runs"
     gen_dir = out_dir / "generations"
@@ -266,17 +268,20 @@ def run_grid(
     pipeline = RagPipeline(RagConfig(top_k=top_k, rerank=False))
     retrieval_runs: list[dict[str, Any]] = []
     generation_runs: list[dict[str, Any]] = []
+    rerank_modes = (False, True) if rerank else (False,)
 
     for index_name in INDEXES:
         pipeline.warmup(index_name)
         for strategy in STRATEGIES:
-            for rerank in (False, True):
-                slug = f"{index_name}_{strategy}_{'rerank' if rerank else 'norerank'}"
+            for use_rerank in rerank_modes:
+                slug = (
+                    f"{index_name}_{strategy}_{'rerank' if use_rerank else 'norerank'}"
+                )
                 run = run_retrieval_config(
                     pipeline,
                     index_name=index_name,
                     strategy=strategy,
-                    rerank=rerank,
+                    rerank=use_rerank,
                     top_k=top_k,
                 )
                 (runs_dir / f"{slug}.json").write_text(
@@ -284,12 +289,12 @@ def run_grid(
                     encoding="utf-8",
                 )
                 retrieval_runs.append(run)
-                if generate and rerank:
+                if generate and use_rerank:
                     gen = run_generation_config(
                         pipeline,
                         index_name=index_name,
                         strategy=strategy,
-                        rerank=rerank,
+                        rerank=use_rerank,
                         top_k=top_k,
                     )
                     (gen_dir / f"{slug}.json").write_text(
@@ -397,7 +402,9 @@ def _rerank_verdict(runs: list[dict[str, Any]]) -> dict[str, Any]:
     """Compare paired vector vs rerank summaries; require zero Cohere errors."""
     by_index: dict[str, dict[str, dict[str, Any]]] = {}
     for row in runs:
-        by_index.setdefault(row["index_name"], {})["rerank" if row["rerank"] else "base"] = row
+        by_index.setdefault(row["index_name"], {})[
+            "rerank" if row["rerank"] else "base"
+        ] = row
     errors = sum(int(row["summary"].get("n_errors") or 0) for row in runs)
     wins = 0
     ties = 0
@@ -406,8 +413,12 @@ def _rerank_verdict(runs: list[dict[str, Any]]) -> dict[str, Any]:
     for index_name, pair in by_index.items():
         base = pair["base"]["summary"]
         rerank = pair["rerank"]["summary"]
-        delta_page = (rerank.get("page_hit_at_k") or 0) - (base.get("page_hit_at_k") or 0)
-        delta_phrase = (rerank.get("phrase_recall") or 0) - (base.get("phrase_recall") or 0)
+        delta_page = (rerank.get("page_hit_at_k") or 0) - (
+            base.get("page_hit_at_k") or 0
+        )
+        delta_phrase = (rerank.get("phrase_recall") or 0) - (
+            base.get("phrase_recall") or 0
+        )
         if delta_page > 0 or (delta_page == 0 and delta_phrase > 0):
             wins += 1
             outcome = "rerank better"
@@ -426,9 +437,7 @@ def _rerank_verdict(runs: list[dict[str, Any]]) -> dict[str, Any]:
             }
         )
     if errors:
-        text = (
-            f"Incomplete: {errors} Cohere errors. Do not treat rerank metrics as conclusive."
-        )
+        text = f"Incomplete: {errors} Cohere errors. Do not treat rerank metrics as conclusive."
     elif wins and not losses:
         text = (
             f"Rerank improved {wins} of {len(pairs)} indexes on this 5-question set "
@@ -447,8 +456,7 @@ def _rerank_verdict(runs: list[dict[str, Any]]) -> dict[str, Any]:
         )
     else:
         text = (
-            f"Mixed: rerank better on {wins}, vector better on {losses}, "
-            f"{ties} ties."
+            f"Mixed: rerank better on {wins}, vector better on {losses}, {ties} ties."
         )
     return {
         "errors": errors,
@@ -539,6 +547,11 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--no-generate", action="store_true")
     parser.add_argument(
+        "--no-rerank",
+        action="store_true",
+        help="Skip Cohere rerank configs (use after fixing retrieval, or on trial keys).",
+    )
+    parser.add_argument(
         "--rerank-compare",
         action="store_true",
         help="Paced 5-question vector vs Cohere rerank check (avoids trial 429s).",
@@ -564,6 +577,7 @@ def main() -> None:
         out_dir=args.out,
         top_k=args.top_k,
         generate=not args.no_generate,
+        rerank=not args.no_rerank,
     )
     print(f"Wrote {args.out / 'summary.json'}")  # noqa: T201
     best = payload["leaderboard"][0] if payload["leaderboard"] else None

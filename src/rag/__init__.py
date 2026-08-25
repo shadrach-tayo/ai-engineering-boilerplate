@@ -1,7 +1,4 @@
-"""Rag playground.
-
-Rag module for practising rag techniques.
-"""
+"""Shared retrieval pipeline used by the graphs and the search UI."""
 
 from dotenv import load_dotenv
 
