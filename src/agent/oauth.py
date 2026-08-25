@@ -36,14 +36,17 @@ class InMemoryTokenStorage(TokenStorage):
         return self._tokens
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
+        """Store the latest OAuth token pair."""
         pprint(tokens)
         self._tokens = tokens
 
     async def get_client_info(self) -> OAuthClientInformationFull | None:
+        """Return cached OAuth client metadata, if any."""
         pprint(self._client_info)
         return self._client_info
 
     async def set_client_info(self, client_info: OAuthClientInformationFull) -> None:
+        """Cache OAuth client metadata after registration."""
         pprint(client_info)
         self._client_info = client_info
 
@@ -52,6 +55,7 @@ class CallbackServer:
     """Local HTTP server that captures the OAuth redirect callback."""
 
     def __init__(self, port: int = DEFAULT_CALLBACK_PORT) -> None:
+        """Bind the callback listener to ``port`` without starting it yet."""
         self.port = port
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -117,9 +121,11 @@ class CallbackServer:
         self._thread = None
 
     async def start(self) -> None:
+        """Start the callback HTTP server on a background thread."""
         await asyncio.to_thread(self._start_sync)
 
     async def stop(self) -> None:
+        """Stop the callback HTTP server and join its thread."""
         await asyncio.to_thread(self._stop_sync)
 
     async def wait_for_callback(self, timeout: float = 300) -> tuple[str, str | None]:

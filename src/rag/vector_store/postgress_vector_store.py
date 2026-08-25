@@ -31,7 +31,8 @@ class PostgresVectorStoreManager:
         chunk_size: int | None = None,
         chunk_overlap: int = 30,
         embeddings: Embeddings | None = None,
-    ):  # noqa: D107
+    ) -> None:
+        """Connect to Postgres and open (or create) the named vector table."""
         logger.info("init db class")
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap

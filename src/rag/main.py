@@ -2,26 +2,13 @@
 
 import json
 import logging
-
-# import os
-import os
-from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 
-import pdf_inspector
-
-# from docling.document_converter import DocumentConverter
-# from langchain_community.retrievers import KNNRetriever
-# from langchain_docling import DoclingLoader
 from langchain_core.documents import Document
 
-# from langchain_text_splitters import RecursiveCharacterTextSplitter
-# from langchain_text_splitters.markdown import MarkdownHeaderTextSplitter
-# from rag.embeddings import embeddings_model
 from rag.elasticsearch_store.search import Search
 from rag.pipeline import RagConfig, RagPipeline
-from rag.vector_store.pinecone_vector_store import PineconeVectorStoreManager
 from rag.vector_store.postgress_vector_store import PostgresVectorStoreManager
 
 logger = logging.getLogger(__name__)
@@ -74,12 +61,6 @@ def main():
     # result = retriever.invoke(query)
     # top1_retrieved_doc = result[0].page_content
     # logger.info("Result: %s", result)
-
-    sources = [
-        Path(__file__).parent / "../../data/openai-guide.pdf",
-        Path(__file__).parent / "../../data/claude-guide.pdf",
-        Path(__file__).parent / "../../data/support-agent.pdf",
-    ]
 
     # converter = DocumentConverter()
     # doc = converter.convert(source).document

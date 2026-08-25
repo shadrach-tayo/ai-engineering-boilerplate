@@ -78,7 +78,7 @@ def test_summarize_averages_hits() -> None:
 
 
 @pytest.mark.integration
-def test_live_retrieval_accuracy_scorecard(capsys: pytest.CaptureFixture[str]) -> None:
+def test_live_retrieval_accuracy_scorecard() -> None:
     """Retrieve the 10 labeled questions and print a scorecard for manual review."""
     from rag.eval.run import format_scorecard, run_eval
 
@@ -93,9 +93,7 @@ def test_live_retrieval_accuracy_scorecard(capsys: pytest.CaptureFixture[str]) -
         pytest.skip(f"retrieval backends unavailable: {exc}")
 
     report = format_scorecard(scores, summary, top_k=5)
-    print(report)
-    captured = capsys.readouterr()
-    assert "Retrieval eval" in captured.out
+    assert "Retrieval eval" in report
     assert summary["n"] == 10
     assert summary["source_hit_at_k"] > 0, (
         "Expected at least one gold-source hit. Re-ingest chunk_256 or review the scorecard."
