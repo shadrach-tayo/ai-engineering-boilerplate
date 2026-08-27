@@ -1,0 +1,127 @@
+# Run the DeepEval RAG generator suite on every PR and gate on grounding.
+#
+# Required repository secrets: DEEPSEEK_API_KEY, VOYAGE_API_KEY, COHERE_API_KEY,
+# DATABASE_URL (Postgres with a populated chunk_512 pgvector index).
+# Optional: CONFIDENT_API_KEY to upload the run to Confident AI.
+#
+# Pytest failures (e.g. Answer Correctness) do not fail the job. The job fails
+# when mean Faithfulness < 0.8 or Hallucination contradiction rate > 0.1.
+
+name: RAG eval
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: rag-eval-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rag-eval:
+    name: Generator eval gates
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CONFIDENT_API_KEY: ${{ secrets.CONFIDENT_API_KEY }}
+      DEEPEVAL_RESULTS_FOLDER: data/deepeval
+      DEEPEVAL_DISABLE_DOTENV: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require eval secrets
+        run: |
+          missing=
+          for name in DEEPSEEK_API_KEY VOYAGE_API_KEY COHERE_API_KEY DATABASE_URL; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "Missing required secrets:$missing"
+            echo "Add them under Settings → Secrets and variables → Actions."
+            echo "DATABASE_URL must point at Postgres with a populated chunk_512 index."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run DeepEval suite
+        id: eval
+        continue-on-error: true
+        run: uv run rag-eval-generator --experiment ci
+
+      - name: Upload eval JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepeval-run
+          path: data/deepeval/test_run_*.json
+          if-no-files-found: warn
+
+      - name: Build report and apply gates
+        id: gates
+        continue-on-error: true
+        run: uv run python scripts/rag_eval_ci_report.py --results-dir data/deepeval --output-md eval-comment.md
+
+      - name: Comment on pull request
+        if: github.event_name == 'pull_request' && hashFiles('eval-comment.md') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('eval-comment.md', 'utf8');
+            const marker = '<!-- rag-eval-report -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((comment) => comment.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Fail when eval JSON is missing
+        if: steps.eval.outcome == 'failure' && hashFiles('data/deepeval/test_run_*.json') == ''
+        run: |
+          echo "Eval suite crashed before writing data/deepeval/test_run_*.json"
+          exit 1
+
+      - name: Fail when quality gates fail
+        if: steps.gates.outcome == 'failure'
+        run: |
+          echo "Faithfulness < 0.8 or Hallucination rate > 0.1"
+          exit 1

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 from pathlib import Path
 
@@ -12,11 +13,16 @@ from deepeval.synthesizer.config import EvolutionConfig, StylingConfig
 from deepeval.synthesizer.types import Evolution
 
 from rag.eval.cases import CASES
+from rag.eval.tests.metrics import (
+    DEEPSEEK_BASE_URL,
+    DEEPEVAL_JUDGE_MODEL_NAME,
+    eval_judge_model,
+)
 from rag.pipeline import RagConfig, RagPipeline
 
 DATASET_ALIAS = "rag-agent-guides-single-turn-v1"
 DATASET_PATH = Path(__file__).parent / "tests" / "goldens.json"
-GENERATION_MODEL = "gpt-4o-mini"
+GENERATION_MODEL = DEEPEVAL_JUDGE_MODEL_NAME
 
 RAG_CONFIG = RagConfig(
     index_name="chunk_512",
@@ -24,6 +30,8 @@ RAG_CONFIG = RagConfig(
     top_k=5,
     rerank=False,
     llm_model=GENERATION_MODEL,
+    llm_base_url=DEEPSEEK_BASE_URL,
+    llm_api_key=os.getenv("DEEPSEEK_API_KEY"),
 )
 
 
@@ -54,7 +62,7 @@ def _normal_goldens(pipeline: RagPipeline) -> list[Golden]:
 def _edge_goldens(seed: list[Golden]) -> list[Golden]:
     """Generate constrained and multi-context variants of curated questions."""
     synthesizer = Synthesizer(
-        model=GENERATION_MODEL,
+        model=eval_judge_model(),
         evolution_config=EvolutionConfig(
             num_evolutions=2,
             evolutions={
@@ -100,7 +108,7 @@ def _edge_goldens(seed: list[Golden]) -> list[Golden]:
 def _failure_goldens(count: int) -> list[Golden]:
     """Generate unsupported or adversarial requests for safe fallback behavior."""
     synthesizer = Synthesizer(
-        model=GENERATION_MODEL,
+        model=eval_judge_model(),
         evolution_config=EvolutionConfig(
             num_evolutions=2,
             evolutions={

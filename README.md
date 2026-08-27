@@ -196,7 +196,8 @@ cp .env.example .env
 ```
 
 At minimum, set `OPENAI_API_KEY` and `VOYAGE_API_KEY`. Set
-`COHERE_API_KEY` when reranking, `TAVILY_API_KEY` when a corrective workflow
+`DEEPSEEK_API_KEY` for DeepEval generator tests (they use `deepseek-chat`).
+Set `COHERE_API_KEY` when reranking, `TAVILY_API_KEY` when a corrective workflow
 can fall back to web search, and `LANGSMITH_API_KEY` to enable LangSmith
 tracing.
 
@@ -306,6 +307,14 @@ keeps scores local.
 Use `--identifier checkout-agent-v2` (or `DEEPEVAL_IDENTIFIER`) when an explicit
 shared identifier is preferable. Additional options are forwarded to
 `deepeval test run`.
+
+Pull requests run the same suite in GitHub Actions (`.github/workflows/rag-eval.yml`).
+The job comments a score table and **fails the build** when mean Faithfulness is
+below `0.8` or the Hallucination contradiction rate is above `0.1`. Pytest
+failures such as Answer Correctness do not fail CI. Required secrets:
+`DEEPSEEK_API_KEY`, `VOYAGE_API_KEY`, `COHERE_API_KEY`, and `DATABASE_URL`
+pointing at Postgres with a populated `chunk_512` index. Optional:
+`CONFIDENT_API_KEY`.
 
 Regenerate the 30 single-turn goldens and push them to Confident AI:
 

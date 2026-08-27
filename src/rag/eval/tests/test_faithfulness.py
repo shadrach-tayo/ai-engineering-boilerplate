@@ -15,11 +15,14 @@ from deepeval.utils import get_is_running_deepeval
 
 from rag.eval.dataset import DATASET_PATH
 from rag.eval.tests.metrics import (
+    DEEPEVAL_ANSWER_CORRECTNESS_THRESHOLD,
     DEEPEVAL_ANSWER_RELEVANCY_THRESHOLD,
+    DEEPEVAL_CONTEXTUAL_THRESHOLD,
     DEEPEVAL_FAITHFULNESS_THRESHOLD,
     DEEPEVAL_HALLUCINATION_THRESHOLD,
-    DEEPEVAL_JUDGE_MODEL,
+    DEEPEVAL_JUDGE_MODEL_NAME,
     DEEPEVAL_REFUSAL_THRESHOLD,
+    DEEPSEEK_BASE_URL,
     grounded_generator_metrics,
     unsupported_fallback_metrics,
 )
@@ -37,9 +40,12 @@ INDEX_NAME = "chunk_512"
 RAG_CONFIG = RagConfig(
     index_name=INDEX_NAME,
     strategy="vector",
-    top_k=5,
-    rerank=False,
-    llm_model="gpt-4o-mini",
+    top_k=10,
+    rerank=True,
+    rerank_top_n=5,
+    llm_model=DEEPEVAL_JUDGE_MODEL_NAME,
+    llm_base_url=DEEPSEEK_BASE_URL,
+    llm_api_key=os.getenv("DEEPSEEK_API_KEY"),
 )
 
 dataset = EvaluationDataset()
@@ -61,7 +67,7 @@ def generator_hyperparameters() -> dict[str, str | int | float]:
         "generator_model": RAG_CONFIG.llm_model,
         "generator_prompt": RAG_CONFIG.system_prompt,
         "generator_temperature": RAG_CONFIG.llm_temperature,
-        "judge_model": DEEPEVAL_JUDGE_MODEL,
+        "judge_model": DEEPEVAL_JUDGE_MODEL_NAME,
         "index_name": RAG_CONFIG.index_name,
         "retrieval_strategy": RAG_CONFIG.strategy,
         "retrieval_top_k": RAG_CONFIG.top_k,
@@ -74,6 +80,8 @@ def generator_hyperparameters() -> dict[str, str | int | float]:
         "faithfulness_threshold": DEEPEVAL_FAITHFULNESS_THRESHOLD,
         "answer_relevancy_threshold": DEEPEVAL_ANSWER_RELEVANCY_THRESHOLD,
         "hallucination_threshold": DEEPEVAL_HALLUCINATION_THRESHOLD,
+        "answer_correctness_threshold": DEEPEVAL_ANSWER_CORRECTNESS_THRESHOLD,
+        "contextual_threshold": DEEPEVAL_CONTEXTUAL_THRESHOLD,
         "refusal_threshold": DEEPEVAL_REFUSAL_THRESHOLD,
     }
 
@@ -94,7 +102,7 @@ def _warn_if_not_deepeval_cli() -> None:
 @pytest.fixture(scope="module")
 def pipeline() -> Iterator[RagPipeline]:
     """Create one generator configured for the live evaluation index."""
-    required_keys = ["OPENAI_API_KEY", "VOYAGE_API_KEY"]
+    required_keys = ["DEEPSEEK_API_KEY", "VOYAGE_API_KEY"]
     if RAG_CONFIG.rerank:
         required_keys.append("COHERE_API_KEY")
     missing = [name for name in required_keys if not os.getenv(name)]
@@ -135,7 +143,7 @@ def test_answerable_generator_is_grounded_and_relevant(
     golden: Golden,
     pipeline: RagPipeline,
 ) -> None:
-    """Require in-domain answers to be relevant and consistent with retrieved context."""
+    """Require in-domain answers to be relevant, retrieved, and correct."""
     _assert_generator(golden, pipeline, grounded_generator_metrics())
 
 
@@ -148,5 +156,5 @@ def test_unsupported_generator_refuses_without_hallucinating(
     golden: Golden,
     pipeline: RagPipeline,
 ) -> None:
-    """Require out-of-domain answers to refuse instead of answering from parametric knowledge."""
+    """Require out-of-domain answers to refuse instead of inventing facts."""
     _assert_generator(golden, pipeline, unsupported_fallback_metrics())

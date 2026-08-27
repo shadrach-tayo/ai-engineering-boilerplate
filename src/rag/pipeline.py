@@ -12,6 +12,7 @@ import cohere
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 from rag.elasticsearch_store.search import Search
 from rag.embeddings import embeddings_model
@@ -44,6 +45,8 @@ class RagConfig:
     rerank_model: str = "rerank-v4.0-pro"
     llm_model: str = "gpt-5.5"
     llm_temperature: float = 1.0
+    llm_base_url: str | None = None
+    llm_api_key: str | None = None
     rrf_rank_constant: int = 60
     system_prompt: str = (
         "You are a helpful assistant who is good at analyzing source information "
@@ -442,10 +445,15 @@ class RagPipeline:
     def _get_llm(self) -> ChatOpenAI:
         """Lazily construct the chat model used for ``generate``."""
         if self._llm is None:
-            self._llm = ChatOpenAI(
-                model=self.config.llm_model,
-                temperature=self.config.llm_temperature,
-            )
+            kwargs: dict[str, Any] = {
+                "model": self.config.llm_model,
+                "temperature": self.config.llm_temperature,
+            }
+            if self.config.llm_base_url:
+                kwargs["base_url"] = self.config.llm_base_url
+            if self.config.llm_api_key:
+                kwargs["api_key"] = SecretStr(self.config.llm_api_key)
+            self._llm = ChatOpenAI(**kwargs)
         return self._llm
 
 
