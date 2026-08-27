@@ -49,6 +49,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.deepeval/
 cover/
 
 # Translations
@@ -169,3 +170,6 @@ exports/**/runs/
 exports/**/generations/
 exports/thread-comparison/threads.json
 exports/rag-experiments/rerank-compare/chunk_*.json
+
+.agents/**/
+.deepeval/

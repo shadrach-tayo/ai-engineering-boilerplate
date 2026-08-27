@@ -223,7 +223,8 @@ class RagPipeline:
             top_k=top_k,
             rerank=rerank,
         )
-        context = "\n\n".join(_dedupe_texts(result.docs))
+        retrieval_context = _dedupe_texts(result.docs)
+        context = "\n\n".join(retrieval_context)
         llm = self._get_llm()
         instructions = f"""{self.config.system_prompt}
 
@@ -239,6 +240,7 @@ class RagPipeline:
         return {
             "question": question,
             "content": response.content,
+            "retrieval_context": retrieval_context,
             "docs": result.metadata,
             "reranks": result.rerank,
             "es_docs": [

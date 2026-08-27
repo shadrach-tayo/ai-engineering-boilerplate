@@ -10,6 +10,7 @@ license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
     "cohere>=7.0.8",
+    "deepeval>=4.2.0",
     "docling>=2.117.0",
     "elasticsearch>=8.15.0,<9",
     "fastapi>=0.115.0",
@@ -41,7 +42,9 @@ dependencies = [
 [project.scripts]
 rag = "rag.main:main"
 rag-agent = "rag.main:agent_rag"
+rag-eval-dataset = "rag.eval.dataset:main"
 rag-eval = "rag.eval.run:main"
+rag-eval-generator = "rag.eval.deepeval_run:main"
 rag-eval-grid = "rag.eval.grid:main"
 rag-ingest = "rag.ingest:main"
 search-api = "api.app:run"
@@ -93,6 +96,7 @@ convention = "google"
 
 [tool.pytest.ini_options]
 markers = [
+    "deepeval: incurs LLM-as-a-judge evaluation calls",
     "integration: needs running Postgres/Elasticsearch indexes",
 ]
 

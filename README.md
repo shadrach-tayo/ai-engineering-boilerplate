@@ -291,6 +291,31 @@ uv run rag-eval-grid --rerank-compare
 
 Results land in `exports/rag-experiments/rerank-compare/`.
 
+Run the DeepEval generator metrics with a stable Confident AI identifier derived
+from the experiment and current PR or branch:
+
+```bash
+uv run rag-eval-generator --experiment latest-dataset
+```
+
+Use that command, not raw `pytest`. Only `deepeval test run` (wrapped by
+`rag-eval-generator`) uploads pass/fail results, hyperparameters, and a
+searchable identifier to Confident AI. `uv run pytest src/rag/eval/tests/...`
+keeps scores local.
+
+Use `--identifier checkout-agent-v2` (or `DEEPEVAL_IDENTIFIER`) when an explicit
+shared identifier is preferable. Additional options are forwarded to
+`deepeval test run`.
+
+Regenerate the 30 single-turn goldens and push them to Confident AI:
+
+```bash
+uv run rag-eval-dataset --alias rag-agent-guides-single-turn-v1
+```
+
+The generator metrics load the same local dataset from
+`src/rag/eval/tests/goldens.json`.
+
 ## Export graph comparisons
 
 With `langgraph dev` running, export completed Studio threads for the three
