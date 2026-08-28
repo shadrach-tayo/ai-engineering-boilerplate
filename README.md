@@ -23,7 +23,8 @@ tools.
 - Optional Cohere reranking and OpenAI answer generation.
 - Relevance, support, and answer-utility grading in the corrective graphs.
 - A browser UI for comparing vector and Elasticsearch results.
-- A 10-question retrieval evaluation and an 18-configuration experiment grid.
+- A 10-question labeled retrieval eval, an 18-configuration grid, DeepEval generator
+  metrics, and named Braintrust experiments that compare two pipeline versions.
 
 The code includes an OAuth provider and an MCP client scaffold. Remote MCP
 connections are currently commented out, so the active graph tools are the
@@ -271,6 +272,33 @@ with paginated Elasticsearch hybrid results and can optionally generate an
 answer. With `BRAINTRUST_API_KEY` set, each search is a parent span on the
 Braintrust dashboard (retrieve, rerank, and generate nested underneath).
 
+## How we measure quality
+
+Quality is split so retrieval bugs are not judged by an LLM, and hallucinations
+are not scored with phrase matching.
+
+1. **Retrieval (labeled, no judge).** Ten gold questions in
+   `src/rag/eval/cases.py` score `source@k`, `page@k`, and phrase recall.
+   `rag-eval` / `rag-eval-grid` swept chunk size × strategy × rerank. The grid
+   winner is `chunk_512` + vector + no rerank (100% source/page/phrase). Hybrid
+   keeps page hits after the Voyage reindex but trails on phrases. Cohere rerank
+   did not beat raw vector. Artifacts: `exports/rag-experiments/`.
+2. **Generation (DeepEval, LLM-as-judge).** Thirty goldens
+   (`src/rag/eval/tests/goldens.json`): 10 curated, 10 synthesized edges, 10
+   out-of-domain refusals. In-domain metrics: Faithfulness, Answer Relevancy,
+   Hallucination, Contextual Precision/Recall, Answer Correctness. OOD cases
+   use a refusal GEval only. CI gates on Faithfulness ≥ 0.8 and hallucination
+   contradiction rate ≤ 0.1. Run with `uv run rag-eval-generator`, not raw
+   pytest, so Confident AI gets a named identifier.
+3. **Observability.** Braintrust traces (`playground.search`, `rag.retrieve`,
+   `rag.generate`, `eval.generator`) show how a request ran. Named Braintrust
+   **experiments** compare two pipeline versions on the labeled retrieval set
+   (see below). RAGAS wrappers were tried via DeepEval and dropped; the same
+   dimensions remain as native Contextual Precision/Recall.
+
+The DeepEval suite scores a *different* config than the grid winner: retrieve
+10, Cohere rerank to 5. Named Braintrust experiments make that A/B explicit.
+
 ## Evaluate retrieval
 
 Run one labeled evaluation:
@@ -298,6 +326,20 @@ uv run rag-eval-grid --rerank-compare
 ```
 
 Results land in `exports/rag-experiments/rerank-compare/`.
+
+Compare the grid winner against the DeepEval generator config as named
+Braintrust experiments (same 10 questions, scored at k=5):
+
+```bash
+uv run rag-eval-braintrust
+```
+
+That logs `chunk512-vector-k5-norerank` then `chunk512-vector-k10-rerank5`
+with the first as `base_experiment`. Open the candidate URL and use Compare
+to see source/page/phrase deltas. Requires `BRAINTRUST_API_KEY`,
+`VOYAGE_API_KEY`, `COHERE_API_KEY`, and a populated `chunk_512` index.
+`--baseline-only` / `--candidate-only` re-run one side;
+`--no-pause` skips the Cohere trial-key pacing.
 
 Run the DeepEval generator metrics with a stable Confident AI identifier derived
 from the experiment and current PR or branch:
