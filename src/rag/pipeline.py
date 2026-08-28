@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import cohere
+from braintrust import traced
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_openai import ChatOpenAI
@@ -43,7 +44,7 @@ class RagConfig:
     rerank: bool = True
     rerank_top_n: int = 3
     rerank_model: str = "rerank-v4.0-pro"
-    llm_model: str = "gpt-5.5"
+    llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 1.0
     llm_base_url: str | None = None
     llm_api_key: str | None = None
@@ -133,6 +134,7 @@ class RagPipeline:
             )
         return self._search_client
 
+    @traced(name="rag.retrieve")
     def retrieve(
         self,
         question: str,
@@ -168,6 +170,7 @@ class RagPipeline:
         finally:
             self.config.rerank_top_n = previous_top_n
 
+    @traced(name="rag.aretrieve")
     async def aretrieve(
         self,
         question: str,
@@ -209,6 +212,7 @@ class RagPipeline:
         """Open the vector store so later retrieves skip engine setup."""
         self._vector_store(index_name or self.config.index_name)
 
+    @traced(name="rag.generate")
     def generate(
         self,
         question: str,

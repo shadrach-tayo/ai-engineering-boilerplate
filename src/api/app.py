@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,7 @@ from markupsafe import Markup
 load_dotenv()
 
 from rag.main import agent_rag, search, vector_rag  # noqa: E402
+from rag.tracing import flush_braintrust, setup_braintrust, trace_span  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,16 @@ def render_markdown(text: str | None) -> Markup:
 
 templates.env.filters["markdown"] = render_markdown
 
-app = FastAPI(title="RAG Retriever Playground")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Enable Braintrust tracing for the playground and flush on shutdown."""
+    setup_braintrust()
+    yield
+    flush_braintrust()
+
+
+app = FastAPI(title="RAG Retriever Playground", lifespan=_lifespan)
 
 INDEX_OPTIONS = ("chunk_256", "chunk_512", "chunk_1024")
 DEFAULT_INDEX = "chunk_256"
@@ -213,55 +225,61 @@ async def handle_search(
     es_error = None
 
     if query:
-        vector_key = _vector_cache_key(query, index_name, top_n, want_agent)
-        vector_hit = _vector_cache.get(vector_key)
-        if vector_hit is not None:
-            cached = True
-            results = vector_hit["results"]
-            answer = vector_hit["answer"]
-            error = vector_hit["error"]
-            _remember_documents(results)
-            logger.info("Vector cache hit for %s", vector_key)
-        else:
-            try:
-                payload = vector_rag(index_name, query, top_n=top_n)
-                results = _format_results(payload, query)
-                if want_agent:
-                    agent = agent_rag(query, store_index=index_name, top_n=top_n)
-                    answer = agent.get("content")
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Vector search failed")
-                error = str(exc)
-            _vector_cache[vector_key] = {
-                "results": results,
-                "answer": answer,
-                "error": error,
-            }
+        with trace_span(
+            "playground.search",
+            input={"query": query, "index_name": index_name, "top_n": top_n},
+            metadata={"ask_agent": want_agent, "from": from_},
+        ):
+            vector_key = _vector_cache_key(query, index_name, top_n, want_agent)
+            vector_hit = _vector_cache.get(vector_key)
+            if vector_hit is not None:
+                cached = True
+                results = vector_hit["results"]
+                answer = vector_hit["answer"]
+                error = vector_hit["error"]
+                _remember_documents(results)
+                logger.info("Vector cache hit for %s", vector_key)
+            else:
+                try:
+                    payload = vector_rag(index_name, query, top_n=top_n)
+                    results = _format_results(payload, query)
+                    if want_agent:
+                        agent = agent_rag(query, store_index=index_name, top_n=top_n)
+                        answer = agent.get("content")
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Vector search failed")
+                    error = str(exc)
+                _vector_cache[vector_key] = {
+                    "results": results,
+                    "answer": answer,
+                    "error": error,
+                }
 
-        es_key = _es_cache_key(query, index_name, top_n, from_)
-        es_hit = _es_cache.get(es_key)
-        if es_hit is not None:
-            es_results = es_hit["es_results"]
-            es_total = es_hit["es_total"]
-            es_error = es_hit["es_error"]
-            _remember_documents(es_results)
-            logger.info("ES cache hit for %s", es_key)
-        else:
-            cached = False
-            try:
-                es_payload = search(
-                    query, store_index=index_name, size=top_n, from_=from_
-                )
-                es_results = _format_es_results(es_payload, query)
-                es_total = _es_total_count(es_payload, len(es_results))
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Elasticsearch search failed")
-                es_error = str(exc)
-            _es_cache[es_key] = {
-                "es_results": es_results,
-                "es_total": es_total,
-                "es_error": es_error,
-            }
+            es_key = _es_cache_key(query, index_name, top_n, from_)
+            es_hit = _es_cache.get(es_key)
+            if es_hit is not None:
+                es_results = es_hit["es_results"]
+                es_total = es_hit["es_total"]
+                es_error = es_hit["es_error"]
+                _remember_documents(es_results)
+                logger.info("ES cache hit for %s", es_key)
+            else:
+                cached = False
+                try:
+                    es_payload = search(
+                        query, store_index=index_name, size=top_n, from_=from_
+                    )
+                    es_results = _format_es_results(es_payload, query)
+                    es_total = _es_total_count(es_payload, len(es_results))
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Elasticsearch search failed")
+                    es_error = str(exc)
+                _es_cache[es_key] = {
+                    "es_results": es_results,
+                    "es_total": es_total,
+                    "es_error": es_error,
+                }
+        flush_braintrust()
 
     page = _es_page_meta(from_, top_n, es_total)
     return templates.TemplateResponse(

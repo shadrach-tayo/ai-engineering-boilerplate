@@ -173,3 +173,6 @@ exports/rag-experiments/rerank-compare/chunk_*.json
 
 .agents/**/
 .deepeval/
+# Added by Braintrust Wizard
+.env.braintrust
+.braintrust.json

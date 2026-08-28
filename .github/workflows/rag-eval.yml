@@ -3,6 +3,8 @@
 # Required repository secrets: DEEPSEEK_API_KEY, VOYAGE_API_KEY, COHERE_API_KEY,
 # DATABASE_URL (Postgres with a populated chunk_512 pgvector index).
 # Optional: CONFIDENT_API_KEY to upload the run to Confident AI.
+# Optional: BRAINTRUST_API_KEY (and BRAINTRUST_PROJECT or BRAINTRUST_PROJECT_ID)
+# to send generator/judge traces to the Braintrust dashboard.
 #
 # Pytest failures (e.g. Answer Correctness) do not fail the job. The job fails
 # when mean Faithfulness < 0.8 or Hallucination contradiction rate > 0.1.
@@ -33,6 +35,9 @@ jobs:
       COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       CONFIDENT_API_KEY: ${{ secrets.CONFIDENT_API_KEY }}
+      BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+      BRAINTRUST_PROJECT: ${{ secrets.BRAINTRUST_PROJECT }}
+      BRAINTRUST_PROJECT_ID: ${{ secrets.BRAINTRUST_PROJECT_ID }}
       DEEPEVAL_RESULTS_FOLDER: data/deepeval
       DEEPEVAL_DISABLE_DOTENV: "1"
     steps:

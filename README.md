@@ -201,6 +201,12 @@ Set `COHERE_API_KEY` when reranking, `TAVILY_API_KEY` when a corrective workflow
 can fall back to web search, and `LANGSMITH_API_KEY` to enable LangSmith
 tracing.
 
+To send LLM traces to [Braintrust](https://www.braintrust.dev/docs/instrument/trace-llm-calls),
+set `BRAINTRUST_API_KEY` (or put it in a gitignored `.env.braintrust`) and
+optionally `BRAINTRUST_PROJECT` (defaults to `langgraph-mcp`) or
+`BRAINTRUST_PROJECT_ID`. Traces are emitted from the search playground and from
+DeepEval generator tests.
+
 Start the local stores:
 
 ```bash
@@ -262,7 +268,8 @@ uv run search-api
 
 Open <http://127.0.0.1:5001>. The UI compares reranked Postgres vector results
 with paginated Elasticsearch hybrid results and can optionally generate an
-answer.
+answer. With `BRAINTRUST_API_KEY` set, each search is a parent span on the
+Braintrust dashboard (retrieve, rerank, and generate nested underneath).
 
 ## Evaluate retrieval
 
@@ -302,7 +309,8 @@ uv run rag-eval-generator --experiment latest-dataset
 Use that command, not raw `pytest`. Only `deepeval test run` (wrapped by
 `rag-eval-generator`) uploads pass/fail results, hyperparameters, and a
 searchable identifier to Confident AI. `uv run pytest src/rag/eval/tests/...`
-keeps scores local.
+keeps scores local. Generator and judge LLM calls from that suite also show up
+in Braintrust when `BRAINTRUST_API_KEY` is set.
 
 Use `--identifier checkout-agent-v2` (or `DEEPEVAL_IDENTIFIER`) when an explicit
 shared identifier is preferable. Additional options are forwarded to
@@ -314,7 +322,8 @@ below `0.8` or the Hallucination contradiction rate is above `0.1`. Pytest
 failures such as Answer Correctness do not fail CI. Required secrets:
 `DEEPSEEK_API_KEY`, `VOYAGE_API_KEY`, `COHERE_API_KEY`, and `DATABASE_URL`
 pointing at Postgres with a populated `chunk_512` index. Optional:
-`CONFIDENT_API_KEY`.
+`CONFIDENT_API_KEY`, plus `BRAINTRUST_API_KEY` (and optionally
+`BRAINTRUST_PROJECT` or `BRAINTRUST_PROJECT_ID`) to upload eval traces.
 
 Regenerate the 30 single-turn goldens and push them to Confident AI:
 

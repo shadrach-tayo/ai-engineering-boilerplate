@@ -27,6 +27,7 @@ from rag.eval.tests.metrics import (
     unsupported_fallback_metrics,
 )
 from rag.pipeline import RagConfig, RagPipeline
+from rag.tracing import trace_span
 
 pytestmark = [
     pytest.mark.integration,
@@ -117,21 +118,26 @@ def _assert_generator(
     pipeline: RagPipeline,
     metrics: Sequence[Any],
 ) -> None:
-    result = pipeline.generate(golden.input)
-    retrieval_context = result["retrieval_context"]
-    assert retrieval_context, f"{golden.name or golden.input} returned no context"
-    assert_test(
-        LLMTestCase(
-            name=golden.name,
-            input=golden.input,
-            actual_output=str(result["content"]),
-            expected_output=golden.expected_output,
-            context=retrieval_context,
-            retrieval_context=retrieval_context,
-            metadata=golden.additional_metadata,
-        ),
-        list(metrics),
-    )
+    with trace_span(
+        "eval.generator",
+        input={"question": golden.input, "name": golden.name},
+        metadata={"category": _category(golden)},
+    ):
+        result = pipeline.generate(golden.input)
+        retrieval_context = result["retrieval_context"]
+        assert retrieval_context, f"{golden.name or golden.input} returned no context"
+        assert_test(
+            LLMTestCase(
+                name=golden.name,
+                input=golden.input,
+                actual_output=str(result["content"]),
+                expected_output=golden.expected_output,
+                context=retrieval_context,
+                retrieval_context=retrieval_context,
+                metadata=golden.additional_metadata,
+            ),
+            list(metrics),
+        )
 
 
 @pytest.mark.parametrize(
