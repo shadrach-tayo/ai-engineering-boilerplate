@@ -11,11 +11,12 @@ from deepeval.dataset import EvaluationDataset, Golden
 from deepeval.synthesizer import Synthesizer
 from deepeval.synthesizer.config import EvolutionConfig, StylingConfig
 from deepeval.synthesizer.types import Evolution
+from deepeval.test_case import RetrievedContextData
 
 from rag.eval.cases import CASES
 from rag.eval.tests.metrics import (
-    DEEPSEEK_BASE_URL,
     DEEPEVAL_JUDGE_MODEL_NAME,
+    DEEPSEEK_BASE_URL,
     eval_judge_model,
 )
 from rag.pipeline import RagConfig, RagPipeline
@@ -42,18 +43,20 @@ def _normal_goldens(pipeline: RagPipeline) -> list[Golden]:
         retrieval = pipeline.retrieve(case.question)
         if not retrieval.docs:
             raise RuntimeError(f"{case.id} returned no retrieval context")
+        retrieval_docs: list[str | RetrievedContextData] = list(retrieval.docs)
         goldens.append(
             Golden(
                 name=case.id,
                 input=case.question,
                 expected_output=case.gold_answer,
                 context=retrieval.docs,
-                retrieval_context=retrieval.docs,
+                retrieval_context=retrieval_docs,
                 additional_metadata={
                     "category": "normal",
                     "expected_sources": list(case.expected_sources),
                     "expected_pages": [list(page) for page in case.expected_pages],
                 },
+                multimodal=False,
             )
         )
     return goldens
