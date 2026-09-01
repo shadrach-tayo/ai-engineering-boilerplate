@@ -97,10 +97,8 @@ Pattern: the judge is not calling the answers unfaithful. It is calling them **i
 
 ## Highest-leverage next step
 
-Relax or specialize the three-sentence generator cap on multi-claim questions, then rerun. If correctness stays low after longer answers, tighten retrieval for `q03` and `edge_06` (rerank or a query rewrite) before changing the judge threshold.
-
-Those retrieval fixes were already run in later experiments. After rerank and k=10→5, correctness is still 13/20, which is why the next unevaluated experiment is dropping the sentence cap or adding chain-of-thought:
+That experiment is now run. Dropping the three-sentence cap, with retrieval held at k=10 → rerank 5 and **no** query decomposition, moved Answer Correctness **13/20 → 18/20** (`rag-no-sentence-cap-eval`, `test_run_20260901_154149.json`). Remaining fails: `q06` (0.60) and `edge_01` (0.50).
 
 ```bash
-uv run rag-eval-generator --experiment cot-prompt
+RAG_EVAL_PROMPT=no-sentence-cap uv run rag-eval-generator --experiment no-sentence-cap
 ```

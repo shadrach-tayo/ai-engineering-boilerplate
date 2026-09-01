@@ -4,7 +4,7 @@ This note is source material for a blog post about iterating on a RAG pipeline w
 
 **Setup.** Agent-guide RAG over the `chunk_512` Postgres index. Vector retrieval. Generator and judge: DeepSeek `deepseek-chat`. Dataset: 30 goldens (10 normal, 10 edge, 10 refusal). Artifacts live under `data/deepeval/`. Date: 27 Aug 2026.
 
-**Current result.** Suite **23 / 30**. Contextual Recall **20 / 20**. Contextual Precision **20 / 20**. Answer Correctness **13 / 20** — still the weakest metric.
+**Current result.** After dropping the three-sentence cap (same retrieval): suite **27 / 30**. Contextual Recall **20 / 20**. Contextual Precision **20 / 20**. Answer Correctness **18 / 20**. Default `RAG_CONFIG` prompt is still three sentences; the longer prompt is `RAG_EVAL_PROMPT=no-sentence-cap`.
 
 Run the scored suite with:
 
@@ -24,11 +24,11 @@ Measure retrieval and generation with a fixed golden set, form a hypothesis abou
 | --- | --- | --- |
 | Contextual Recall | Are the relevant chunks retrieved at all? Native DeepEval, threshold 0.5. | Done. Baseline missed `edge_06`; retrieve 10 then rerank to 5 recovers it. |
 | Contextual Precision | Are retrieved chunks useful and well ranked? Native DeepEval, threshold 0.5. | Done. Cohere rerank fixed `q03` (0.42 → 1.00). |
-| Answer Correctness | Is the final answer factually right vs `expected_output`? GEval, threshold 0.7. | Implemented; still 13/20. |
+| Answer Correctness | Is the final answer factually right vs `expected_output`? GEval, threshold 0.7. | 18/20 after dropping the three-sentence cap. Remaining misses: `q06`, `edge_01`. |
 | Full 7-metric suite | Logged to `data/deepeval/test_run_<timestamp>.json`. | Done. |
 | Experiment: higher top-k | Does increasing top-k improve recall? | Yes, if rerank then cuts to 5. Stuffing all 10 into the prompt hurts correctness. |
 | Experiment: rerank | Does reranking improve precision? | Yes. `q03` 0.42 → 1.00; pass 19/20 → 20/20; mean 0.936 → 0.969 at k=5. |
-| Experiment: longer answers | Does dropping the three-sentence cap (or adding chain-of-thought) improve Answer Correctness? | Not run yet. |
+| Experiment: longer answers | Does dropping the three-sentence cap improve Answer Correctness on its own? | Yes. 13/20 → 18/20. No query decomposition. No CoT. |
 
 ---
 
@@ -59,7 +59,8 @@ Pass rate (%) after the native-metric switch:
 | Baseline k=5, no rerank | 95 | 95 | 50 |
 | Rerank k=5, n=5 | 95 | 100 | 65 |
 | k=10 stuffed into the prompt | 100 | 100 | 45 |
-| k=10 then rerank to 5 (current) | 100 | 100 | 65 |
+| k=10 then rerank to 5 | 100 | 100 | 65 |
+| Same retrieval, no sentence cap | 100 | 100 | 90 |
 
 Pass rate hid a quality drop when all 10 chunks went into the prompt. Precision **mean** (0–1):
 
@@ -69,6 +70,7 @@ Pass rate hid a quality drop when all 10 chunks went into the prompt. Precision 
 | Rerank k=5, n=5 | 0.969 |
 | k=10 into the prompt | 0.907 |
 | k=10 then n=5 | 0.963 |
+| Same retrieval, no sentence cap | 0.950 |
 
 ---
 
@@ -100,14 +102,14 @@ Pass rate hid a quality drop when all 10 chunks went into the prompt. Precision 
 - **Measure:** Recall win, correctness regression.
 - **Hypothesis:** We need the extra candidate for recall, not 10 chunks at generation time.
 - **Change:** `top_k=10`, `rerank_top_n=5`.
-- **Result:** Recall 20/20, precision mean 0.963, correctness back to 13/20. `edge_06` correctness 0.50 → 0.80. File: `test_run_20260827_142224.json`, identifier `rag-topk-10-rerank-5-main`. This is the current config.
+- **Result:** Recall 20/20, precision mean 0.963, correctness back to 13/20. `edge_06` correctness 0.50 → 0.80. File: `test_run_20260827_142224.json`, identifier `rag-topk-10-rerank-5-main`.
 
-### Cycle 4 — generation, not retrieval (not run)
+### Cycle 4 — generation, not retrieval
 
-- **Measure:** Correctness still 13/20.
-- **Hypothesis:** The three-sentence generator prompt omits labeled claims even when retrieval is complete.
-- **Change:** Chain-of-thought, or drop the sentence cap.
-- **Result:** Not run. Intended command: `uv run rag-eval-generator --experiment cot-prompt`.
+- **Measure:** Correctness still 13/20 with retrieval solved.
+- **Hypothesis:** The three-sentence generator prompt omits labeled claims even when retrieval is complete. Raising the cap should move Correctness without decomposing multi-part questions.
+- **Change:** Same `top_k=10` / rerank to 5. Replace “Use three sentences maximum…” with “Cover every supported claim… Do not omit named facts… just to stay short.” `RAG_EVAL_PROMPT=no-sentence-cap`.
+- **Result:** Correctness **13/20 → 18/20** (mean 0.690 → 0.925). Suite 23/30 → 27/30. Faithfulness and Unsupported Refusal stayed at 20/20 and 10/10. Answer Relevancy dipped 20/20 → 19/20. Remaining Correctness fails: `q06` (0.60), `edge_01` (0.50). No query decomposition, no CoT. File: `test_run_20260901_154149.json`, identifier `rag-no-sentence-cap-eval`. Command: `RAG_EVAL_PROMPT=no-sentence-cap uv run rag-eval-generator --experiment no-sentence-cap`.
 
 ---
 
@@ -119,14 +121,15 @@ Pass rate hid a quality drop when all 10 chunks went into the prompt. Precision 
 | Native 7-metric baseline | `rag-latest-dataset-main` | `test_run_20260827_132733.json` | 5 | off | 20 / 30 | 19/20, mean 0.950 | 19/20, mean 0.936 | 10/20, mean 0.675 |
 | Rerank on, k=5 n=5 | `rag-rerank-on-main` | `test_run_20260827_140101.json` | 5 | 5 | 23 / 30 | 19/20, mean 0.950 | 20/20, mean 0.969 | 13/20, mean 0.695 |
 | k=10 stuffed into prompt | `rag-topk-10-main` | `test_run_20260827_141441.json` | 10 | 10 | 19 / 30 | 20/20, mean 1.000 | 20/20, mean 0.907 | 9/20, mean 0.680 |
-| Current: k=10, rerank to 5 | `rag-topk-10-rerank-5-main` | `test_run_20260827_142224.json` | 10 | 5 | 23 / 30 | 20/20, mean 1.000 | 20/20, mean 0.963 | 13/20, mean 0.690 |
+| k=10, rerank to 5 | `rag-topk-10-rerank-5-main` | `test_run_20260827_142224.json` | 10 | 5 | 23 / 30 | 20/20, mean 1.000 | 20/20, mean 0.963 | 13/20, mean 0.690 |
+| No sentence cap | `rag-no-sentence-cap-eval` | `test_run_20260901_154149.json` | 10 | 5 | 27 / 30 | 20/20, mean 1.000 | 20/20, mean 0.950 | 18/20, mean 0.925 |
 
 ---
 
 ## What we learned
 
-**Retrieval is mostly solved.** Rerank fixes ranking (precision). Retrieving 10 then keeping 5 fixes coverage (recall) without drowning the generator. Faithfulness, relevancy, hallucination, and out-of-domain refusal stay at or near 100%.
+**Retrieval is mostly solved.** Rerank fixes ranking (precision). Retrieving 10 then keeping 5 fixes coverage (recall) without drowning the generator. Faithfulness, hallucination, and out-of-domain refusal stay at or near 100%.
 
-**Generation is the remaining gap.** Answer Correctness still fails 7 of 20 answerable goldens, mostly dense edge `expected_output`s versus “Use three sentences maximum.” See [Answer Correctness is the weakest metric](./deepeval-weakest-metric.md) for the case-level breakdown from the baseline run.
+**The three-sentence cap was the Correctness ceiling.** Dropping it recovered 5 of the remaining 7 Answer Correctness fails without query decomposition. Two misses left: `q06`, `edge_01`. See [Answer Correctness is the weakest metric](./deepeval-weakest-metric.md) for the baseline case-level breakdown.
 
-**Current eval knobs** (`test_faithfulness.py` `RAG_CONFIG`): strategy `vector`, index `chunk_512`, `top_k=10`, `rerank=True`, `rerank_top_n=5`, Cohere `rerank-v4.0-pro`. Generator prompt is still three sentences. Judge and generator: DeepSeek `deepseek-chat`.
+**Current eval knobs** (`test_faithfulness.py` `RAG_CONFIG`): strategy `vector`, index `chunk_512`, `top_k=10`, `rerank=True`, `rerank_top_n=5`, Cohere `rerank-v4.0-pro`. Default generator prompt is still three sentences. Longer answers: `RAG_EVAL_PROMPT=no-sentence-cap`. Judge and generator: DeepSeek `deepseek-chat`.
