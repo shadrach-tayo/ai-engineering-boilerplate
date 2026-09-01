@@ -131,8 +131,12 @@ ENV/
 env.bak/
 venv.bak/
 
-# Local RAG datasets (downloaded via src/rag/download_dataset.py)
-data/
+# Local RAG datasets and eval dumps. Keep the three agent-guide PDFs tracked
+# so CI can seed Postgres from a clean checkout.
+data/*
+!data/openai-guide.pdf
+!data/claude-guide.pdf
+!data/support-agent.pdf
 
 # Spyder project settings
 .spyderproject

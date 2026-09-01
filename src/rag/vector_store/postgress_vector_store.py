@@ -31,6 +31,7 @@ class PostgresVectorStoreManager:
         chunk_size: int | None = None,
         chunk_overlap: int = 30,
         embeddings: Embeddings | None = None,
+        overwrite_existing: bool = False,
     ) -> None:
         """Connect to Postgres and open (or create) the named vector table."""
         logger.info("init db class")
@@ -41,11 +42,11 @@ class PostgresVectorStoreManager:
             raise ValueError("DATABASE_URL is not set")
         self.engine = PGEngine.from_connection_string(url=DATABASE_URL)
 
-        # CREATE TABLES IF MISSING
         if chunk_size:
             self.engine.init_vectorstore_table(
                 table_name=index_name,
                 vector_size=embedding_dim,
+                overwrite_existing=overwrite_existing,
             )
 
         self.vector_store = PGVectorStore.create_sync(

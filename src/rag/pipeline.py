@@ -277,6 +277,7 @@ class RagPipeline:
                 chunk_size=self.config.chunk_size,
                 chunk_overlap=self.config.chunk_overlap,
                 embeddings=self.embeddings,
+                overwrite_existing=True,
             )
             store.add_documents(documents)
             self._stores[index] = store

@@ -1,10 +1,16 @@
-# Run the DeepEval RAG generator suite on every PR and gate on grounding.
+# Two-lane RAG eval on every PR, then gate on grounding.
 #
-# Required repository secrets: DEEPSEEK_API_KEY, VOYAGE_API_KEY, COHERE_API_KEY,
-# DATABASE_URL (Postgres with a populated chunk_512 pgvector index).
-# Optional: CONFIDENT_API_KEY to upload the run to Confident AI.
-# Optional: BRAINTRUST_API_KEY (and BRAINTRUST_PROJECT or BRAINTRUST_PROJECT_ID)
-# to send generator/judge traces to the Braintrust dashboard.
+# Starts Compose Postgres and Elasticsearch, seeds chunk_512 in both stores
+# from the three agent-guide PDFs, then runs:
+#   1. Retriever lane — 10 labeled questions, no LLM judge
+#      (source@k / page@k / phrase recall).
+#   2. Generator lane — 30 goldens, 7 DeepEval metrics
+#      (`uv run rag-eval-generator --experiment ci`).
+# Results comment on the PR. Optional CONFIDENT_API_KEY uploads the generator
+# run to Confident AI. Optional BRAINTRUST_API_KEY uploads a named experiment
+# (rag-ci-<branch-or-pr>) compared to rag-latest-dataset-main.
+#
+# Required repository secrets: DEEPSEEK_API_KEY, VOYAGE_API_KEY, COHERE_API_KEY.
 #
 # Pytest failures (e.g. Answer Correctness) do not fail the job. The job fails
 # when mean Faithfulness < 0.8 or Hallucination contradiction rate > 0.1.
@@ -25,18 +31,19 @@ concurrency:
 
 jobs:
   rag-eval:
-    name: Generator eval gates
+    name: Two-lane RAG eval
     if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
       COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL: postgresql+psycopg://rag:rag@localhost:54325/rag
+      ELASTICSEARCH_URL: http://localhost:9200
       CONFIDENT_API_KEY: ${{ secrets.CONFIDENT_API_KEY }}
       BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
-      BRAINTRUST_PROJECT: ${{ secrets.BRAINTRUST_PROJECT }}
+      BRAINTRUST_PROJECT: ${{ secrets.BRAINTRUST_PROJECT || 'rag-eval' }}
       BRAINTRUST_PROJECT_ID: ${{ secrets.BRAINTRUST_PROJECT_ID }}
       DEEPEVAL_RESULTS_FOLDER: data/deepeval
       DEEPEVAL_DISABLE_DOTENV: "1"
@@ -46,7 +53,7 @@ jobs:
       - name: Require eval secrets
         run: |
           missing=
-          for name in DEEPSEEK_API_KEY VOYAGE_API_KEY COHERE_API_KEY DATABASE_URL; do
+          for name in DEEPSEEK_API_KEY VOYAGE_API_KEY COHERE_API_KEY; do
             if [ -z "${!name}" ]; then
               missing="$missing $name"
             fi
@@ -54,7 +61,6 @@ jobs:
           if [ -n "$missing" ]; then
             echo "Missing required secrets:$missing"
             echo "Add them under Settings → Secrets and variables → Actions."
-            echo "DATABASE_URL must point at Postgres with a populated chunk_512 index."
             exit 1
           fi
 
@@ -71,23 +77,46 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
-      - name: Run DeepEval suite
+      - name: Start Postgres and Elasticsearch
+        run: docker compose up -d --wait
+
+      - name: Seed chunk_512 in Postgres and Elasticsearch
+        run: uv run rag-ingest --targets vector hybrid --indexes chunk_512
+
+      - name: Retriever lane
+        run: uv run rag-eval --index chunk_512 --strategy vector --top-k 5 --no-rerank
+
+      - name: Generator lane
         id: eval
         continue-on-error: true
         run: uv run rag-eval-generator --experiment ci
+
+      - name: Upload named Braintrust experiment
+        if: always() && env.BRAINTRUST_API_KEY != ''
+        continue-on-error: true
+        run: >
+          uv run rag-eval-braintrust-generator --from-latest
+          --results-dir data/deepeval
+          --base-experiment rag-latest-dataset-main
 
       - name: Upload eval JSON
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: deepeval-run
-          path: data/deepeval/test_run_*.json
+          path: |
+            data/deepeval/test_run_*.json
+            data/retrieval_eval_report.json
           if-no-files-found: warn
 
       - name: Build report and apply gates
         id: gates
         continue-on-error: true
-        run: uv run python scripts/rag_eval_ci_report.py --results-dir data/deepeval --output-md eval-comment.md
+        run: >
+          uv run python scripts/rag_eval_ci_report.py
+          --results-dir data/deepeval
+          --retrieval-json data/retrieval_eval_report.json
+          --output-md eval-comment.md
 
       - name: Comment on pull request
         if: github.event_name == 'pull_request' && hashFiles('eval-comment.md') != ''

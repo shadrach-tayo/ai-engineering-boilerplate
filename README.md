@@ -231,6 +231,12 @@ BM25) with:
 uv run rag-ingest
 ```
 
+Seed the same `chunk_512` pair CI uses (Postgres vectors + ES hybrid):
+
+```bash
+uv run rag-ingest --targets vector hybrid --indexes chunk_512
+```
+
 `RagPipeline.ingest(...)` can also write Postgres and/or Elasticsearch. The
 hybrid path must use the same embedder as pgvector; mixing MiniLM kNN with
 Voyage vectors is what made the first hybrid eval collapse onto one PDF.
@@ -341,6 +347,17 @@ to see source/page/phrase deltas. Requires `BRAINTRUST_API_KEY`,
 `--baseline-only` / `--candidate-only` re-run one side;
 `--no-pause` skips the Cohere trial-key pacing.
 
+Upload the two scored DeepEval generator runs as Braintrust experiments
+(`rag-latest-dataset-main` vs `rag-topk-10-rerank-5-main`) for the Compare
+view. Scores are 0/1 pass so column means are pass rates:
+
+```bash
+uv run rag-eval-braintrust-generator
+```
+
+That reads the local `data/deepeval/test_run_20260827_132733.json` and
+`test_run_20260827_142224.json` files. Requires `BRAINTRUST_API_KEY`.
+
 Run the DeepEval generator metrics with a stable Confident AI identifier derived
 from the experiment and current PR or branch:
 
@@ -358,14 +375,17 @@ Use `--identifier checkout-agent-v2` (or `DEEPEVAL_IDENTIFIER`) when an explicit
 shared identifier is preferable. Additional options are forwarded to
 `deepeval test run`.
 
-Pull requests run the same suite in GitHub Actions (`.github/workflows/rag-eval.yml`).
-The job comments a score table and **fails the build** when mean Faithfulness is
-below `0.8` or the Hallucination contradiction rate is above `0.1`. Pytest
-failures such as Answer Correctness do not fail CI. Required secrets:
-`DEEPSEEK_API_KEY`, `VOYAGE_API_KEY`, `COHERE_API_KEY`, and `DATABASE_URL`
-pointing at Postgres with a populated `chunk_512` index. Optional:
-`CONFIDENT_API_KEY`, plus `BRAINTRUST_API_KEY` (and optionally
-`BRAINTRUST_PROJECT` or `BRAINTRUST_PROJECT_ID`) to upload eval traces.
+Pull requests run two lanes in GitHub Actions (`.github/workflows/rag-eval.yml`).
+The job starts Compose Postgres and Elasticsearch, seeds `chunk_512` from the
+three committed agent-guide PDFs, then runs the labeled 10-question retriever
+eval (no LLM judge) and the 30-golden DeepEval generator suite. It comments a
+score table and **fails the build** when mean Faithfulness is below `0.8` or
+the Hallucination contradiction rate is above `0.1`. Answer Correctness and
+the other pytest metrics report without blocking. Required secrets:
+`DEEPSEEK_API_KEY`, `VOYAGE_API_KEY`, and `COHERE_API_KEY`. Optional:
+`CONFIDENT_API_KEY` (named Confident AI run), plus `BRAINTRUST_API_KEY` (and
+optionally `BRAINTRUST_PROJECT` or `BRAINTRUST_PROJECT_ID`) to upload a named
+Braintrust experiment compared to `rag-latest-dataset-main`.
 
 Regenerate the 30 single-turn goldens and push them to Confident AI:
 

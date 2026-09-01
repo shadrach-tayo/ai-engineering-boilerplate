@@ -80,12 +80,29 @@ def evaluate_gates(
     return not reasons, reasons, faith_mean, hall_rate
 
 
+def render_retrieval(payload: Mapping[str, Any]) -> list[str]:
+    """Render the 10-question labeled retrieval lane."""
+    summary = payload.get("summary") or {}
+    return [
+        "### Retriever lane",
+        "",
+        "10 labeled questions from `src/rag/eval/cases.py`. No LLM judge.",
+        "",
+        f"- source@k: **{(summary.get('source_hit_at_k') or 0):.0%}**",
+        f"- page@k: **{(summary.get('page_hit_at_k') or 0):.0%}**",
+        f"- phrase recall: **{(summary.get('phrase_recall') or 0):.0%}**",
+        f"- auto relevant: **{(summary.get('auto_relevant') or 0):.0%}**",
+        "",
+    ]
+
+
 def render_markdown(
     payload: Mapping[str, Any],
     run_path: Path,
     *,
     faithfulness_min: float,
     hallucination_rate_max: float,
+    retrieval: Mapping[str, Any] | None = None,
 ) -> str:
     """Build a GitHub-flavored markdown summary for the PR comment."""
     rows = _metric_rows(payload)
@@ -108,6 +125,9 @@ def render_markdown(
         f"- Gates: **{gate_label}** — fail if Faithfulness < {faithfulness_min} or Hallucination rate > {hallucination_rate_max}",
         "",
     ]
+    if retrieval:
+        lines.extend(render_retrieval(retrieval))
+        lines.extend(["### Generator lane", ""])
     if faith_mean is not None:
         lines.append(f"- Faithfulness mean: `{faith_mean:.3f}` (higher is better)")
     if hall_rate is not None:
@@ -161,6 +181,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=CI_HALLUCINATION_RATE_MAX,
         help="Maximum allowed contradiction rate (1 - DeepEval Hallucination mean).",
     )
+    parser.add_argument(
+        "--retrieval-json",
+        type=Path,
+        help="Optional labeled retrieval report from rag-eval.",
+    )
     return parser.parse_args(argv)
 
 
@@ -169,11 +194,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     run_path = latest_run(args.results_dir)
     payload = json.loads(run_path.read_text())
+    retrieval = None
+    if args.retrieval_json and args.retrieval_json.is_file():
+        retrieval = json.loads(args.retrieval_json.read_text())
     markdown = render_markdown(
         payload,
         run_path,
         faithfulness_min=args.faithfulness_min,
         hallucination_rate_max=args.hallucination_max,
+        retrieval=retrieval,
     )
     args.output_md.write_text(markdown)
     summary_path = os.getenv("GITHUB_STEP_SUMMARY")
