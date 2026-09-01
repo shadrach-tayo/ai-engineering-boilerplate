@@ -3,7 +3,9 @@
 import logging
 import os
 
+from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
+from langchain_core.retrievers import BaseRetriever
 from langchain_postgres import PGEngine, PGVectorStore
 from langchain_text_splitters import (
     CharacterTextSplitter,
@@ -55,16 +57,16 @@ class PostgresVectorStoreManager:
             embedding_service=embeddings or embeddings_model,
         )
 
-    def add_documents(self, documents):  # noqa: D102
+    def add_documents(self, documents: list[Document]) -> None:  # noqa: D102
         logger.info("splitting documents...")
         splits = self._split_documents(documents)
         self.vector_store.add_documents(splits)
         logger.info(f"Added {len(splits)} to vector store")
 
-    def as_retriever(self, k: int = 4):  # noqa: D102
+    def as_retriever(self, k: int = 4) -> BaseRetriever:  # noqa: D102
         return self.vector_store.as_retriever(search_kwargs={"k": k})
 
-    def _split_documents(self, documents):
+    def _split_documents(self, documents: list[Document]) -> list[Document]:
         logger.info("splitting documents")
         # text_splitter = RecursiveCharacterTextSplitter(
         # chunk_size=1000,
@@ -72,9 +74,12 @@ class PostgresVectorStoreManager:
         #     add_start_index=True,
         # )
         # return text_splitter.split_documents(documents)
+        chunk_size = self.chunk_size
+        if chunk_size is None:
+            raise ValueError("chunk_size is required to split documents")
         text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
             encoding_name="cl100k_base",
-            chunk_size=self.chunk_size,
+            chunk_size=chunk_size,
             chunk_overlap=self.chunk_overlap,
         )
         return text_splitter.split_documents(documents)

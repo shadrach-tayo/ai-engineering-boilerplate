@@ -8,9 +8,10 @@ from collections.abc import Iterator, Sequence
 from typing import Any
 
 import pytest
-from deepeval import assert_test, log_hyperparameters
 from deepeval.dataset import EvaluationDataset, Golden
+from deepeval.evaluate import assert_test
 from deepeval.test_case import LLMTestCase
+from deepeval.test_run import log_hyperparameters
 from deepeval.utils import get_is_running_deepeval
 
 from rag.eval.dataset import DATASET_PATH
@@ -54,14 +55,15 @@ dataset.add_goldens_from_json_file(file_path=str(DATASET_PATH))
 
 
 def _category(golden: Any) -> str:
-    return (golden.additional_metadata or {}).get("category", "normal")
+    value = (golden.additional_metadata or {}).get("category", "normal")
+    return value if isinstance(value, str) else "normal"
 
 
 ANSWERABLE = [golden for golden in dataset.goldens if _category(golden) != "failure"]
 UNSUPPORTED = [golden for golden in dataset.goldens if _category(golden) == "failure"]
 
 
-@log_hyperparameters
+@log_hyperparameters  # type: ignore[untyped-decorator]
 def generator_hyperparameters() -> dict[str, str | int | float]:
     """Log generator, retrieval, and judge settings with each DeepEval run."""
     return {

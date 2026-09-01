@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 from pprint import pprint
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -45,7 +46,7 @@ def get_pipeline() -> RagPipeline:
     return _pipeline
 
 
-def main():
+def main() -> None:
     """Main function."""  # noqa: D401
     # logger.info(documents)
     # print(f"\n")
@@ -144,7 +145,7 @@ def main():
 
 def index_data_sources(  # noqa: D103
     index_name: str, chunk_size: int, embedding_dim: int, documents: list[Document]
-):
+) -> None:
     es_index = Search(chunk_size, embedding_dim)
     es_index.create_index(index_name)
     results = es_index.insert_documents(index_name=index_name, documents=documents)
@@ -153,7 +154,7 @@ def index_data_sources(  # noqa: D103
     )
 
 
-def vector_rag(index_name: str, question: str, *, top_n: int = 5):
+def vector_rag(index_name: str, question: str, *, top_n: int = 5) -> dict[str, Any]:
     """Retrieve relevant document from the vector database indexed by the index_name parameter."""
     return (
         get_pipeline()
@@ -168,20 +169,20 @@ def vector_rag(index_name: str, question: str, *, top_n: int = 5):
     )
 
 
-def rerank(docs: list[str], question: str, top_n: int = 3):
+def rerank(docs: list[str], question: str, top_n: int = 3) -> dict[str, Any]:
     """Rerank document from vector retriever."""
     ranked = get_pipeline().rerank_documents(docs, question, top_n=top_n)
     return {"docs": ranked.docs, "rerank": ranked.rerank}
 
 
-def save_data(data, file_name):  # noqa: D103
+def save_data(data: Any, file_name: str) -> None:  # noqa: D103
     save_file_path = Path(base_path).parent / f"../../data/{file_name}.json"
     with open(save_file_path, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4)
         logger.info(f"Saved: {save_file_path}")
 
 
-def agent_rag(question: str, store_index: str | None = None, *, top_n: int = 5):
+def agent_rag(question: str, store_index: str | None = None, *, top_n: int = 5) -> dict[str, Any]:
     """Answer a question using vector RAG and Elasticsearch hybrid hits."""
     return get_pipeline().generate(
         question,
@@ -191,14 +192,14 @@ def agent_rag(question: str, store_index: str | None = None, *, top_n: int = 5):
     )
 
 
-def es_index_injestion(index: str, documents):
+def es_index_injestion(index: str, documents: list[Document]) -> None:
     """Index Elasticsearch cluster index."""
     results = get_pipeline().search_client.insert_documents(index, documents)
     logger.info("ES index populated: %s, entries: %s", index, len(results["items"]))
     # pprint(results['items'])
 
 
-def pg_index_injestion(index: str, documents):
+def pg_index_injestion(index: str, documents: list[Document]) -> None:
     """Postgres DB vector embedding index."""
     store = PostgresVectorStoreManager(index_name=index, chunk_size=chunk_size)
     store.add_documents(documents)
@@ -211,7 +212,7 @@ def search(
     *,
     size: int = 10,
     from_: int = 0,
-):
+) -> dict[str, Any]:
     """Search Elasticsearch cluster index with BM25 + kNN RRF fusion."""
     return (
         get_pipeline()

@@ -148,7 +148,7 @@ def create_oauth_provider(
     storage: TokenStorage | None = None,
 ) -> OAuthClientProvider:
     """Build an OAuthClientProvider wired for local browser login."""
-    mcp_url = server_url or os.getenv("MCP_SERVER_URL", DEFAULT_MCP_SERVER_URL)
+    mcp_url = server_url or os.getenv("MCP_SERVER_URL") or DEFAULT_MCP_SERVER_URL
     port = callback_port or int(os.getenv("MCP_OAUTH_CALLBACK_PORT", DEFAULT_CALLBACK_PORT))
     oauth_scope = scope or os.getenv("MCP_OAUTH_SCOPE", DEFAULT_SCOPE)
     redirect_uri = f"http://localhost:{port}/callback"

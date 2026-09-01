@@ -4,6 +4,7 @@ import logging
 import os
 import time
 
+from langchain_core.documents import Document
 from langchain_pinecone import PineconeVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pinecone import Pinecone, ServerlessSpec
@@ -20,7 +21,7 @@ logger = logging.getLogger(__file__)
 class PineconeVectorStoreManager:
     """Vector database class."""
 
-    def __init__(self, index_name: str, *, embedding_dim: int = 1024):
+    def __init__(self, index_name: str, *, embedding_dim: int = 1024) -> None:
         """PineconeVectorStoreManager Constructor."""
         logger.info("init db class")
         self.index_name = index_name
@@ -43,7 +44,7 @@ class PineconeVectorStoreManager:
             embedding=embeddings_model, index=self.index
         )
 
-    def add_documents(self, documents):
+    def add_documents(self, documents: list[Document]) -> None:
         """PineconeVectorStoreManager Constructor."""
         logger.info("splitting documents...")
         splits = self._split_documents(documents)
@@ -53,7 +54,7 @@ class PineconeVectorStoreManager:
     # def as_retriever(self, k: int = 4):
     #     return self.vector_store.as_retriever()
 
-    def _split_documents(self, documents):
+    def _split_documents(self, documents: list[Document]) -> list[Document]:
         logger.info("splitting documents")
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,

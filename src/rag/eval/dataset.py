@@ -6,6 +6,7 @@ import argparse
 import os
 import re
 from pathlib import Path
+from typing import cast
 
 from deepeval.dataset import EvaluationDataset, Golden
 from deepeval.synthesizer import Synthesizer
@@ -105,7 +106,7 @@ def _edge_goldens(seed: list[Golden]) -> list[Golden]:
             **(golden.additional_metadata or {}),
             "category": "edge",
         }
-    return goldens
+    return cast(list[Golden], goldens)
 
 
 def _failure_goldens(count: int) -> list[Golden]:

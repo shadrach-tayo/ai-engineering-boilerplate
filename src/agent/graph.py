@@ -11,7 +11,7 @@ import operator
 import os
 from dataclasses import dataclass
 from pprint import pprint
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from langchain_core.messages import (
     AIMessage,
@@ -188,7 +188,7 @@ async def get_all_tools(mcp_client: MultiServerMCPClient) -> list[BaseTool]:
 async def run_tools(state: State, runtime: Runtime[Context]) -> dict[str, Any]:
     """Execute the model’s tool calls, including local RAG search."""
     tools = await get_all_tools(client)
-    return await ToolNode(tools).ainvoke(state)
+    return cast(dict[str, Any], await ToolNode(tools).ainvoke(state))
 
 
 async def assistant(state: State, runtime: Runtime[Context]) -> dict[str, Any]:

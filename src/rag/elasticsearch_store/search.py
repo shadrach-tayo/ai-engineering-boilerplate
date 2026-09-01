@@ -23,13 +23,13 @@ _EMBED_BATCH = 32
 
 
 def reciprocal_rank_fuse(
-    result_lists: list[list[dict]],
+    result_lists: list[list[dict[str, Any]]],
     *,
     rank_constant: int = 60,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Merge ranked hit lists with reciprocal rank fusion."""
     scores: dict[str, float] = {}
-    docs: dict[str, dict] = {}
+    docs: dict[str, dict[str, Any]] = {}
     for hits in result_lists:
         for rank, hit in enumerate(hits, start=1):
             doc_id = hit["_id"]
@@ -53,7 +53,7 @@ class Search:
         embedding_dims: int,
         embeddings: Embeddings | None = None,
         chunk_overlap: int = 30,
-    ):
+    ) -> None:
         """Connect to Elasticsearch and store the shared embedding model."""
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -68,7 +68,7 @@ class Search:
         """Return the Elasticsearch mapping for an index."""
         return self.es.indices.get_mapping(index=index)
 
-    def create_index(self, index_name: str = "default-index"):
+    def create_index(self, index_name: str = "default-index") -> None:
         """Create or replace an index with BM25 text fields and dense vectors."""
         self.es.indices.delete(index=index_name, ignore_unavailable=True)
         self.es.indices.create(
@@ -92,7 +92,7 @@ class Search:
         """Embed a query or document with the shared embedding model."""
         return self.embeddings.embed_query(text)
 
-    def insert_document(self, index_name: str, document):
+    def insert_document(self, index_name: str, document: list[Document]) -> None:
         """Insert new document to index."""
         splits = self._split_documents(document)
         for split, vector in zip(
@@ -103,7 +103,7 @@ class Search:
                 body=self._to_es_doc(split, vector),
             )
 
-    def insert_documents(self, index_name: str, documents):
+    def insert_documents(self, index_name: str, documents: list[Document]) -> Any:
         """Bulk-insert chunked documents with batched embeddings."""
         operations = []
         splits = self._split_documents(documents)
@@ -113,12 +113,12 @@ class Search:
             operations.append(self._to_es_doc(document, vector))
         return self.es.bulk(operations=operations)
 
-    def reindex(self, index_name: str, documents):
+    def reindex(self, index_name: str, documents: list[Document]) -> Any:
         """Refresh an index."""
         self.create_index(index_name=index_name)
         return self.insert_documents(index_name=index_name, documents=documents)
 
-    def search(self, index_name: str, **query_args):
+    def search(self, index_name: str, **query_args: Any) -> Any:
         """Run search query on index."""
         return self.es.search(index=index_name, **query_args)
 
@@ -131,7 +131,7 @@ class Search:
         from_: int = 0,
         rank_constant: int = 60,
         window_size: int | None = None,
-    ):
+    ) -> dict[str, Any]:
         """Fuse BM25 and kNN rankings with reciprocal rank fusion."""
         window = max(window_size or 50, size)
         query_vector = self.get_embedding(question)
@@ -162,7 +162,7 @@ class Search:
             }
         }
 
-    def retrieve_document(self, index: str, id):
+    def retrieve_document(self, index: str, id: str) -> Any:
         """Retrieve a document by id from an index."""
         return self.es.get(index=index, id=id)
 
@@ -186,14 +186,14 @@ class Search:
                 raise last_exc
         return vectors
 
-    def _to_es_doc(self, doc: Document, vector: list[float]) -> dict:
+    def _to_es_doc(self, doc: Document, vector: list[float]) -> dict[str, Any]:
         return {
             "content": doc.page_content,
             "embedding": vector,
             **doc.metadata,
         }
 
-    def _split_documents(self, documents):
+    def _split_documents(self, documents: list[Document]) -> list[Document]:
         logger.info("splitting documents")
         text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
             encoding_name="cl100k_base",

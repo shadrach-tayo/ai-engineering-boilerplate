@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-import kagglehub
+import kagglehub  # type: ignore[import-untyped]
 
 DATASET = "snap/amazon-fine-food-reviews"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "amazon-fine-food-reviews"

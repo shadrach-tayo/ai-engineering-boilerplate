@@ -2,6 +2,7 @@
 
 from deepeval.metrics import (
     AnswerRelevancyMetric,
+    BaseMetric,
     ContextualPrecisionMetric,
     ContextualRecallMetric,
     FaithfulnessMetric,
@@ -74,7 +75,7 @@ def _answer_correctness() -> GEval:
     )
 
 
-def grounded_generator_metrics() -> list:
+def grounded_generator_metrics() -> list[BaseMetric]:
     """Score in-domain answers for grounding, retrieval coverage, and correctness."""
     judge = eval_judge_model()
     return [
