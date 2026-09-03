@@ -11,6 +11,8 @@ from typing import Any
 import braintrust
 from dotenv import load_dotenv
 
+from rag.request_id import get_request_id
+
 # Patch providers before LangChain OpenAI clients are imported.
 # https://www.braintrust.dev/docs/instrument/trace-llm-calls
 braintrust.auto_instrument()
@@ -41,8 +43,18 @@ def flush_braintrust() -> None:
     braintrust.flush()  # type: ignore[no-untyped-call]
 
 
+def _span_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Copy kwargs and stamp the current request id onto span metadata."""
+    request_id = get_request_id()
+    if not request_id:
+        return kwargs
+    metadata = dict(kwargs.get("metadata") or {})
+    metadata.setdefault("request_id", request_id)
+    return {**kwargs, "metadata": metadata}
+
+
 @contextmanager
 def trace_span(name: str, **kwargs: Any) -> Iterator[Any]:
     """Open a parent span for a playground or eval request."""
-    with braintrust.start_span(name=name, **kwargs) as span:
+    with braintrust.start_span(name=name, **_span_kwargs(kwargs)) as span:
         yield span
